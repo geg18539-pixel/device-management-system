@@ -14,4 +14,7 @@ public interface SysMenuRepository extends JpaRepository<SysMenu, Long> {
     List<SysMenu> findAllByOrderBySortOrderAsc();
 
     boolean existsByMenuNameAndParentId(String menuName, Long parentId);
+
+    /** 判断某个菜单下是否还有子菜单，删除前要检查 */
+    boolean existsByParentId(Long parentId);
 }

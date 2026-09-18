@@ -5,6 +5,7 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from 'axios'
 import { ElMessage } from 'element-plus'
+import { useUserStore } from '../stores/user'
 
 /** 后端统一响应格式，对应后端的 common/Result.java */
 export interface ApiResult<T = unknown> {
@@ -15,6 +16,14 @@ export interface ApiResult<T = unknown> {
 
 /** 业务成功码 */
 const SUCCESS_CODE = 200
+const UNAUTHORIZED = 401
+
+/**
+ * 登录接口本身在密码错误时也会返回 401。
+ * 必须把它排除在"401 就跳登录页"的逻辑之外，否则用户输错密码时
+ * 会被反复重定向，什么提示都看不到。
+ */
+const LOGIN_PATH = '/auth/login'
 
 const service: AxiosInstance = axios.create({
   // 走 Vite 代理，见 vite.config.ts 的 server.proxy
@@ -23,13 +32,14 @@ const service: AxiosInstance = axios.create({
 })
 
 // ============================================================
-// 请求拦截器
+// 请求拦截器：自动携带 token
 // ============================================================
 service.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    // TODO: 登录功能做好之后，改成从 Pinia store 里取。
-    // 项目里已经装了 pinia，但还没有 store，所以先直接从 localStorage 读。
-    const token = localStorage.getItem('token')
+    // 在回调内部（运行时）才调用 useUserStore()，不在模块顶层调用。
+    // Pinia 是在 main.ts 的 app.use(createPinia()) 之后才可用，
+    // 模块顶层取会报 "getActivePinia() was called but there was no active Pinia"。
+    const token = useUserStore().token
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -60,8 +70,18 @@ service.interceptors.response.use(
     return Promise.reject(new Error(res.message || '请求失败'))
   },
   (error) => {
-    // 网络层错误：超时、连不上、5xx 等。后端抛异常时 GlobalExceptionHandler
-    // 返回的响应体仍然是统一格式，所以这里优先用后端给的 message。
+    const status = error?.response?.status
+    const url: string = String(error?.config?.url ?? '')
+
+    // 401 且不是登录接口 → token 失效或未登录，清理并送回登录页
+    if (status === UNAUTHORIZED && !url.includes(LOGIN_PATH)) {
+      handleUnauthorized()
+      return Promise.reject(error)
+    }
+
+    // 其余错误：网络层问题、5xx、以及登录接口的 401（密码错误）。
+    // 后端抛异常时 GlobalExceptionHandler 返回的响应体仍是统一格式，
+    // 所以优先用后端给的 message。
     let message = '网络异常，请稍后重试'
 
     const backendMessage = error?.response?.data?.message
@@ -69,14 +89,39 @@ service.interceptors.response.use(
       message = backendMessage
     } else if (error?.code === 'ECONNABORTED' || String(error?.message).includes('timeout')) {
       message = '请求超时，请稍后重试'
-    } else if (error?.response?.status) {
-      message = `请求失败（HTTP ${error.response.status}）`
+    } else if (status) {
+      message = `请求失败（HTTP ${status}）`
     }
 
     ElMessage.error(message)
     return Promise.reject(error)
   },
 )
+
+/** token 失效时的统一处理：清状态 + 回登录页，并记住原地址便于登录后跳回 */
+function handleUnauthorized() {
+  const userStore = useUserStore()
+  const wasLoggedIn = userStore.isLoggedIn
+
+  userStore.logout()
+
+  // 只有"本来是登录状态、突然失效"才提示。
+  // 否则刷新页面时若有请求先于路由守卫发出，会反复弹提示很烦人。
+  if (wasLoggedIn) {
+    ElMessage.error('登录已过期，请重新登录')
+  }
+
+  const current = window.location.pathname + window.location.search
+  if (current.startsWith('/login')) {
+    return
+  }
+
+  // 这里用 window.location 而不是 router.push，有两个原因：
+  // 1) 避免 request.ts 反向 import router。router → api/auth → request → router
+  //    会构成循环依赖；
+  // 2) 整页刷新能顺带清空所有内存状态，对"认证失效"来说这是更干净的处理。
+  window.location.href = `/login?redirect=${encodeURIComponent(current)}`
+}
 
 /**
  * 因为响应拦截器已经把 { code, message, data } 解包成了 data，

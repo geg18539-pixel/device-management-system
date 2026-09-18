@@ -58,14 +58,15 @@ public class JwtUtil {
         this.issuer = issuer;
     }
 
-    /** 生成 token。roles 会作为自定义 claim 写进去，拦截器里直接读，不用查库。 */
-    public String generateToken(Long userId, String username, Collection<String> roles) {
+    /** 生成 token。roles 和 nickname 会作为自定义 claim 写进去，拦截器里直接读，不用查库。 */
+    public String generateToken(Long userId, String username, String nickname, Collection<String> roles) {
         Instant now = Instant.now();
 
         return Jwts.builder()
                 .issuer(issuer)
                 .subject(username)
                 .claim("userId", userId)
+                .claim("nickname", nickname)
                 .claim("roles", roles == null ? Set.of() : roles)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusMillis(expireMillis)))
@@ -91,6 +92,7 @@ public class JwtUtil {
         return new LoginUser(
                 readUserId(claims),
                 claims.getSubject(),
+                claims.get("nickname", String.class),
                 readRoles(claims)
         );
     }

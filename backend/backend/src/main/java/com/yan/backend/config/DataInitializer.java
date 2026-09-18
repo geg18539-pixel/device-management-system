@@ -57,13 +57,25 @@ public class DataInitializer implements CommandLineRunner {
         log.info("检测到空库，开始初始化 RBAC 基础数据...");
 
         // ---------- 菜单 ----------
-        // 先只初始化当前真实存在的前端页面。
-        // 5.3 / 5.4 做完系统管理模块后，在这里继续追加菜单即可。
         SysMenu deviceMenu = createMenu("设备管理", SysMenu.ROOT_PARENT_ID, "M",
                 "/devices", null, "device:list", "Monitor", 1);
         SysMenu helloMenu = createMenu("联调测试", SysMenu.ROOT_PARENT_ID, "M",
                 "/hello", null, "hello:view", "Link", 2);
         sysMenuRepository.saveAll(List.of(deviceMenu, helloMenu));
+
+        // 系统管理是目录，下面挂三个子菜单。
+        // 必须先 save 拿到目录的 id，子菜单才能把 parentId 指向它。
+        SysMenu systemMenu = createMenu("系统管理", SysMenu.ROOT_PARENT_ID, "M",
+                "/system", null, null, "Setting", 9);
+        sysMenuRepository.save(systemMenu);
+
+        SysMenu userMenu = createMenu("用户管理", systemMenu.getId(), "F",
+                "/system/users", null, "sys:user:list", "User", 1);
+        SysMenu roleMenu = createMenu("角色管理", systemMenu.getId(), "F",
+                "/system/roles", null, "sys:role:list", "Avatar", 2);
+        SysMenu menuMenu = createMenu("菜单管理", systemMenu.getId(), "F",
+                "/system/menus", null, "sys:menu:list", "Menu", 3);
+        sysMenuRepository.saveAll(List.of(userMenu, roleMenu, menuMenu));
 
         // ---------- 角色 ----------
         // 注意先保存角色，再保存引用它的用户。
@@ -74,7 +86,8 @@ public class DataInitializer implements CommandLineRunner {
         adminRole.setSortOrder(1);
         adminRole.setStatus("正常");
         adminRole.setRemark("拥有全部权限");
-        adminRole.setMenus(new HashSet<>(List.of(deviceMenu, helloMenu)));
+        adminRole.setMenus(new HashSet<>(List.of(
+                deviceMenu, helloMenu, systemMenu, userMenu, roleMenu, menuMenu)));
         sysRoleRepository.save(adminRole);
 
         SysRole operatorRole = new SysRole();
@@ -82,7 +95,9 @@ public class DataInitializer implements CommandLineRunner {
         operatorRole.setRoleKey("operator");
         operatorRole.setSortOrder(2);
         operatorRole.setStatus("正常");
-        operatorRole.setRemark("只能查看设备与联调页");
+        operatorRole.setRemark("只能查看设备与联调页，看不到系统管理");
+        // 只给前两个菜单：operator 登录后侧边栏不会出现"系统管理"。
+        // 这就让两个角色的菜单真正有了区别，能直观看出权限过滤在起作用。
         operatorRole.setMenus(new HashSet<>(List.of(deviceMenu, helloMenu)));
         sysRoleRepository.save(operatorRole);
 

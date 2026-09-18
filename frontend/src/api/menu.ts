@@ -1,0 +1,65 @@
+import request from '../utils/request'
+
+/** 菜单类型：M 目录 / F 菜单 / B 按钮 */
+export const MENU_TYPE = {
+  DIR: 'M',
+  MENU: 'F',
+  BUTTON: 'B',
+} as const
+
+export type MenuType = (typeof MENU_TYPE)[keyof typeof MENU_TYPE]
+
+export const MENU_TYPE_OPTIONS = [
+  { label: '目录', value: MENU_TYPE.DIR },
+  { label: '菜单', value: MENU_TYPE.MENU },
+  { label: '按钮', value: MENU_TYPE.BUTTON },
+]
+
+/** 对应后端 dto/SysMenuTreeVO.java */
+export interface SysMenuTree {
+  id: number
+  parentId: number
+  menuName: string
+  path?: string
+  component?: string
+  menuType: MenuType
+  perms?: string
+  icon?: string
+  sortOrder?: number
+  visible?: number
+  children: SysMenuTree[]
+}
+
+/** 新增 / 编辑菜单的提交结构（父级 id 为 0 表示顶级） */
+export interface SysMenuForm {
+  parentId: number
+  menuName: string
+  path?: string
+  component?: string
+  menuType: MenuType
+  perms?: string
+  icon?: string
+  sortOrder?: number
+  visible?: number
+}
+
+/** 树形结构，给 el-tree 和树形表格用 */
+export function getMenuTree() {
+  return request.get<SysMenuTree[]>('/system/menus/tree')
+}
+
+export function getMenuById(id: number) {
+  return request.get<SysMenuTree>(`/system/menus/${id}`)
+}
+
+export function createMenu(data: SysMenuForm) {
+  return request.post<SysMenuTree>('/system/menus', data)
+}
+
+export function updateMenu(id: number, data: SysMenuForm) {
+  return request.put<SysMenuTree>(`/system/menus/${id}`, data)
+}
+
+export function deleteMenu(id: number) {
+  return request.delete<void>(`/system/menus/${id}`)
+}

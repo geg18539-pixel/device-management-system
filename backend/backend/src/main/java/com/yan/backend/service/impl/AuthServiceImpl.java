@@ -55,7 +55,8 @@ public class AuthServiceImpl implements AuthService {
                 .map(SysRole::getRoleKey)
                 .collect(Collectors.toSet());
 
-        String token = jwtUtil.generateToken(user.getId(), user.getUsername(), roleKeys);
+        String token = jwtUtil.generateToken(
+                user.getId(), user.getUsername(), user.getNickname(), roleKeys);
 
         LoginResponse response = new LoginResponse();
         response.setToken(token);

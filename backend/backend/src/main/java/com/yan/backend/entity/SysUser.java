@@ -1,5 +1,6 @@
 package com.yan.backend.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -43,10 +44,16 @@ public class SysUser {
     /**
      * BCrypt 加密后的密码。
      *
-     * <p>注意：这个类目前不会被直接序列化成 JSON 返回（登录接口用的是 LoginResponse DTO）。
-     * 等以后有接口要返回用户对象时，必须先把密码置空或加 @JsonIgnore，
-     * 否则会把密码哈希泄露出去。
+     * <p>@JsonIgnore 让这个字段永远不会被序列化进接口响应。
+     *
+     * <p>这里用 com.fasterxml.jackson.annotation.JsonIgnore 是**正确**的，
+     * 尽管 Boot 4 的 Spring MVC 实际用的是 Jackson 3（tools.jackson）。
+     * 原因是 Jackson 3 有意把注解保留在 Jackson 2 的坐标和包名下以保持兼容，
+     * jackson-databind 3.1.5 的 pom 里对此有明确注释。
+     * 会变的是 ObjectMapper 的类路径（tools.jackson.databind.ObjectMapper），
+     * 注解本身不变。
      */
+    @JsonIgnore
     @Column(name = "password", nullable = false, length = 100)
     private String password;
 
@@ -74,6 +81,7 @@ public class SysUser {
      * 登录时用 SysUserRepository.findByUsernameWithRoles() 通过 EntityGraph
      * 一次性把角色查出来，避免踩这个坑。
      */
+    @JsonIgnore
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
             name = "sys_user_role",

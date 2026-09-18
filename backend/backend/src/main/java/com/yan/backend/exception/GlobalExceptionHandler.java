@@ -48,6 +48,24 @@ public class GlobalExceptionHandler {
                 .body(Result.failure(400, "参数校验失败", errors));
     }
 
+    /**
+     * 业务规则不满足。
+     *
+     * <p>比如：用户名已存在、不允许删除内置管理员、菜单下还有子菜单不能删、
+     * 角色下还有用户不能删等等。这些是"这次请求本身不合法"，属于客户端问题，
+     * 应该返回 400。
+     *
+     * <p>如果不单独处理，它们会落到下面的兜底分支变成 500 —— 前端会以为
+     * 服务器崩了，也没法把这些提示当成正常的表单校验错误来展示。
+     */
+    @ExceptionHandler({IllegalArgumentException.class, IllegalStateException.class})
+    public ResponseEntity<Result<Void>> handleBusinessException(RuntimeException ex) {
+        log.warn("业务校验未通过: {}", ex.getMessage());
+
+        return ResponseEntity.badRequest()
+                .body(Result.failure(400, ex.getMessage()));
+    }
+
     /** 认证失败（用户名密码错误、账号停用）。 */
     @ExceptionHandler(AuthException.class)
     public ResponseEntity<Result<Void>> handleAuthException(AuthException ex) {

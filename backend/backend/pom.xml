@@ -83,6 +83,21 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!--
+          AOP 支持。5.3 的操作日志切面（LogAspect）需要它。
+          没有它 @Aspect / @Around 不会被织入，切面静默失效 —— 不报错但也不生效。
+
+          注意 artifact 名：Boot 4 把 spring-boot-starter-aop 改名成了
+          spring-boot-starter-aspectj（和 web → webmvc 是同一批重命名）。
+          写成旧名字会报 "'dependencies.dependency.version' is missing"，
+          因为 4.1.1 的 BOM 里已经没有这个 artifact 了 —— 而这时去手动补版本号
+          是没用的，Maven Central 上 4.1.1 的 spring-boot-starter-aop 直接是 404。
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aspectj</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-devtools</artifactId>

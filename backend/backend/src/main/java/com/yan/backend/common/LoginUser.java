@@ -11,5 +11,5 @@ import java.util.Set;
  *
  * <p>用 record 是因为它天然不可变，放进 ThreadLocal 后不用担心被下游代码改掉。
  */
-public record LoginUser(Long userId, String username, Set<String> roles) {
+public record LoginUser(Long userId, String username, String nickname, Set<String> roles) {
 }

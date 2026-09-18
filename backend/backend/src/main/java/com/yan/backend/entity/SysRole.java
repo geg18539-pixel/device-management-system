@@ -1,5 +1,6 @@
 package com.yan.backend.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -56,7 +57,15 @@ public class SysRole {
     @Column(name = "remark", length = 500)
     private String remark;
 
-    /** 角色拥有的菜单权限。同样是 LAZY，只在事务内访问。 */
+    /**
+     * 角色拥有的菜单权限。LAZY 加载，只在事务内访问。
+     *
+     * <p>@JsonIgnore 是必须的：角色实体会被直接返回给前端（比如 /roles/all
+     * 给"分配角色"弹窗用），而 Jackson 是在事务外的 Controller 层做序列化的，
+     * 去碰这个未初始化的懒集合会抛 LazyInitializationException。
+     * 需要菜单 id 的地方（findMenuIds）是在 Service 的事务内访问的，不受影响。
+     */
+    @JsonIgnore
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
             name = "sys_role_menu",

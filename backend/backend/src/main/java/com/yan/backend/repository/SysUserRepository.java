@@ -1,6 +1,8 @@
 package com.yan.backend.repository;
 
 import com.yan.backend.entity.SysUser;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
@@ -21,5 +23,10 @@ public interface SysUserRepository extends JpaRepository<SysUser, Long> {
     @EntityGraph(attributePaths = "roles")
     Optional<SysUser> findByUsername(String username);
 
+    /** 分页查询，按用户名模糊匹配。不预取 roles，交给 Service 在事务内按需加载。 */
+    Page<SysUser> findByUsernameContaining(String username, Pageable pageable);
+
     boolean existsByUsername(String username);
+
+    boolean existsByRoles_Id(Long roleId);
 }
