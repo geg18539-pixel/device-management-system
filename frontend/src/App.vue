@@ -38,6 +38,7 @@ interface MenuItem {
  */
 const allMenus: MenuItem[] = [
   { path: '/devices', title: '设备管理', roles: ['admin', 'operator'] },
+  { path: '/device-repairs', title: '维修工单', roles: ['admin', 'operator'] },
   { path: '/hello', title: '联调测试', roles: ['admin', 'operator'] },
   {
     title: '系统管理',

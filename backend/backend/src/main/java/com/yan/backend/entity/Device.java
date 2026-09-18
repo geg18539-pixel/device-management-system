@@ -11,6 +11,7 @@ import jakarta.validation.constraints.Size;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
@@ -18,10 +19,21 @@ import java.time.LocalDateTime;
  *
  * <p>字段名用驼峰，列名用下划线，通过每个字段上的 @Column(name = ...) 显式指定，
  * 不依赖命名策略的隐式转换，表结构一目了然。
+ *
+ * <p>5.5 为了做"资产全生命周期"扩充了资产属性（资产编号、采购日期、保修到期日、
+ * 分类）和当前借用信息。**新增的列全部允许为空** —— 表里已经有数据，
+ * 加 NOT NULL 列会让已有行的插入/校验失败。
  */
 @Entity
 @Table(name = "device")
 public class Device {
+
+    // ---------- 设备状态常量 ----------
+    // status 是自由字符串（历史原因），这些常量避免各处硬编码写错
+    public static final String STATUS_ONLINE = "在线";
+    public static final String STATUS_OFFLINE = "离线";
+    public static final String STATUS_REPAIRING = "维修中";
+    public static final String STATUS_IN_USE = "使用中";
 
     /** 主键，交给数据库自增 */
     @Id
@@ -34,18 +46,39 @@ public class Device {
     @Column(name = "device_name", nullable = false, length = 100)
     private String deviceName;
 
-    /** 设备类型 */
-    @NotBlank(message = "设备类型不能为空")
+    /**
+     * 设备类型（自由文本）。
+     *
+     * <p>5.5 引入了结构化的 DeviceCategory 之后，这个字段降级为**遗留字段**：
+     * 去掉了 @NotBlank（新表单不再要求填），已有数据保持不动，避免破坏历史记录。
+     * 新代码请用 categoryId。
+     */
     @Size(max = 50, message = "设备类型不能超过 50 个字符")
-    @Column(name = "device_type", nullable = false, length = 50)
+    @Column(name = "device_type", length = 50)
     private String deviceType;
+
+    /**
+     * 所属分类 id，指向 device_category 表。null 表示未分类。
+     *
+     * <p>这里存的是裸 id 而不是 @ManyToOne 关联。原因是项目开了
+     * open-in-view=false，用关联对象容易在序列化时踩 LazyInitializationException
+     * （5.3 已经在 SysRole.menus 上踩过一次）。裸 id 配合前端已有的分类树做映射，
+     * 既没有懒加载风险，也不会产生 N+1 查询。
+     */
+    @Column(name = "category_id")
+    private Long categoryId;
+
+    /** 资产编号，如 ZC-2026-0001 */
+    @Size(max = 50, message = "资产编号不能超过 50 个字符")
+    @Column(name = "asset_code", length = 50, unique = true)
+    private String assetCode;
 
     /** 设备序列号，全局唯一 */
     @Size(max = 100, message = "序列号不能超过 100 个字符")
     @Column(name = "serial_number", length = 100, unique = true)
     private String serialNumber;
 
-    /** 设备状态，如：在线 / 离线 / 维修中 */
+    /** 设备状态：在线 / 离线 / 维修中 / 使用中 */
     @NotBlank(message = "设备状态不能为空")
     @Size(max = 20, message = "设备状态不能超过 20 个字符")
     @Column(name = "status", nullable = false, length = 20)
@@ -61,19 +94,27 @@ public class Device {
     @Column(name = "description", length = 500)
     private String description;
 
-    /**
-     * 创建时间，由 Hibernate 在 insert 时自动填充。
-     *
-     * <p>updatable = false 让它不会出现在 update 语句里，保证创建时间不被改写。
-     * 这里用 @Column(nullable = false) 而不用 Bean Validation 的 @NotNull：
-     * 后者会被 Hibernate 的模型校验当成"实体状态不合法"，
-     * 在 ddl-auto=validate 时误报 schema 校验失败。
-     */
+    /** 采购日期 */
+    @Column(name = "purchase_date")
+    private LocalDate purchaseDate;
+
+    /** 保修到期日。前端可以据此算出"快过保"清单 */
+    @Column(name = "warranty_date")
+    private LocalDate warrantyDate;
+
+    /** 当前借用人。为空表示未被借出 */
+    @Size(max = 50, message = "借用人不能超过 50 个字符")
+    @Column(name = "borrower", length = 50)
+    private String borrower;
+
+    /** 借出时间。归还时和 borrower 一起清空 */
+    @Column(name = "borrow_time")
+    private LocalDateTime borrowTime;
+
     @CreationTimestamp
     @Column(name = "create_time", nullable = false, updatable = false)
     private LocalDateTime createTime;
 
-    /** 更新时间，由 Hibernate 在每次 update 时自动刷新 */
     @UpdateTimestamp
     @Column(name = "update_time", nullable = false)
     private LocalDateTime updateTime;
@@ -102,6 +143,22 @@ public class Device {
 
     public void setDeviceType(String deviceType) {
         this.deviceType = deviceType;
+    }
+
+    public Long getCategoryId() {
+        return categoryId;
+    }
+
+    public void setCategoryId(Long categoryId) {
+        this.categoryId = categoryId;
+    }
+
+    public String getAssetCode() {
+        return assetCode;
+    }
+
+    public void setAssetCode(String assetCode) {
+        this.assetCode = assetCode;
     }
 
     public String getSerialNumber() {
@@ -134,6 +191,38 @@ public class Device {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    public LocalDate getPurchaseDate() {
+        return purchaseDate;
+    }
+
+    public void setPurchaseDate(LocalDate purchaseDate) {
+        this.purchaseDate = purchaseDate;
+    }
+
+    public LocalDate getWarrantyDate() {
+        return warrantyDate;
+    }
+
+    public void setWarrantyDate(LocalDate warrantyDate) {
+        this.warrantyDate = warrantyDate;
+    }
+
+    public String getBorrower() {
+        return borrower;
+    }
+
+    public void setBorrower(String borrower) {
+        this.borrower = borrower;
+    }
+
+    public LocalDateTime getBorrowTime() {
+        return borrowTime;
+    }
+
+    public void setBorrowTime(LocalDateTime borrowTime) {
+        this.borrowTime = borrowTime;
     }
 
     public LocalDateTime getCreateTime() {

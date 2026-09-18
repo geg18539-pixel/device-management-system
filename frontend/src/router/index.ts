@@ -26,6 +26,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '设备管理', roles: ['admin', 'operator'] },
   },
   {
+    path: '/device-repairs',
+    name: 'DeviceRepair',
+    component: () => import('../views/DeviceRepairView.vue'),
+    meta: { title: '维修工单', roles: ['admin', 'operator'] },
+  },
+  {
     path: '/hello',
     name: 'Hello',
     component: () => import('../views/HelloView.vue'),
