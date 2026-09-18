@@ -1,0 +1,61 @@
+/*
+ * 全局样式。
+ *
+ * 这里只保留设计变量和基础重置。原先 Vite 默认模板留下的那些选择器
+ * （#app 的 1126px 居中约束、.hero、#center、#next-steps 等）已经全部移除 ——
+ * 它们会把后台布局挤成一条窄栏，而且早就不再有元素匹配。
+ */
+
+:root {
+  --text: #6b6375;
+  --text-h: #08060d;
+  --bg: #fff;
+  --border: #e5e4e7;
+  --code-bg: #f4f3ec;
+  --accent: #aa3bff;
+  --accent-bg: rgba(170, 59, 255, 0.1);
+  --accent-border: rgba(170, 59, 255, 0.5);
+
+  --sans: system-ui, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --mono: ui-monospace, Consolas, monospace;
+
+  font: 14px/145% var(--sans);
+  letter-spacing: 0.18px;
+  color-scheme: light;
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--sans);
+  font-weight: 500;
+  color: var(--text-h);
+}
+
+p {
+  margin: 0;
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--code-bg);
+  color: var(--text-h);
+}
+
+/* 这里刻意不做 prefers-color-scheme 暗色适配：
+   Element Plus 当前是只引入亮色主题（main.ts 里只引了 index.css），
+   如果自定义变量跟着系统切成暗色，页面背景会变深而 EP 组件仍是亮色，反而更花。
+   要支持暗色需要额外引入 element-plus/theme-chalk/dark/css-vars.css 并切换 html.dark。 */

@@ -1,0 +1,49 @@
+# ============================================================
+# 根级 .gitignore
+#
+# 后端和前端各自已经有 .gitignore（分别覆盖 target/ 和 node_modules），
+# 这里放的是根目录层面、以及跨模块通用的忽略规则，作为补充。
+# ============================================================
+
+# ---------- 操作系统 ----------
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.Spotlight-V100
+.Trashes
+
+# ---------- 编辑器 / IDE ----------
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+*.swp
+*.swo
+
+# ---------- 构建产物 ----------
+# 后端 Maven
+backend/backend/target/
+# 前端 Vite
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.local
+
+# ---------- 日志 ----------
+*.log
+logs/
+npm-debug.log*
+pnpm-debug.log*
+
+# ---------- 本地覆盖配置 / 密钥 ----------
+# 这些文件通常放数据库密码、JWT 密钥等，绝对不要提交
+**/application-local.yml
+**/application-local.yaml
+**/application-local.properties
+.env
+.env.local
+.env.*.local
+
+# ---------- Docker 本地数据 ----------
+docker/data/

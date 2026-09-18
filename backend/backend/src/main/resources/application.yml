@@ -1,0 +1,68 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: device-management-system
+
+  # ============================================================
+  # 数据源
+  #
+  # ${VAR:默认值} 是 Spring 的属性占位符语法，冒号后面是找不到该变量时的兜底值。
+  #   本地 IDEA 直接跑：不带环境变量，走默认值 localhost:3306 —— 就是本机的 MySQL
+  #   Docker 里跑：docker-compose.yml 注入 DB_HOST=mysql 等，覆盖掉默认值
+  #
+  # 必须这么写的原因是：容器里的 localhost 指容器自己，不是宿主机。
+  # backend 容器直接连 localhost:3306 会连到它自己身上，必然失败。
+  # ============================================================
+  datasource:
+    url: "jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:device_db}?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true"
+    username: ${DB_USER:root}
+    password: ${DB_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  # ============================================================
+  # JPA / Hibernate
+  # ============================================================
+  jpa:
+    hibernate:
+      # update：启动时对比实体与表结构，自动建表、自动加字段（不会删列、不会改类型）。
+      # 开发阶段省事，但生产环境要改成 validate 或 none。
+      ddl-auto: update
+    # 控制台打印 Hibernate 执行的 SQL，方便调试
+    show-sql: true
+    # 关闭 OSIV（Open Session In View）。
+    # 默认开启时 Spring 会在整个 HTTP 请求期间保持 Session，虽然能掩盖
+    # LazyInitializationException，但会让本该在 Service 层结束的数据访问拖到
+    # 视图渲染阶段，也容易长时间占用数据库连接。
+    open-in-view: false
+    properties:
+      hibernate:
+        # 把 SQL 换行排版，配合上面的 show-sql 使用
+        format_sql: true
+
+  # ============================================================
+  # Redis
+  #
+  # 给 application 里加了 spring-boot-starter-data-redis 依赖之后，
+  # 这段配置才会真正生效（Spring Boot 会自动配好 RedisTemplate 和连接工厂）。
+  # Lettuce 是懒连接，Redis 没起来也不会导致应用启动失败。
+  # ============================================================
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+# ============================================================
+# JWT 配置（自定义前缀，不是 Spring 的标准配置项）
+#
+# secret 必须是至少 32 字节（256 位）的字符串，HS256 的硬性要求，
+# 短了启动时 JwtUtil 会直接抛异常并告诉你当前长度。
+# 下面这个默认值仅供本地开发，部署时必须用 JWT_SECRET 环境变量覆盖。
+# ============================================================
+app:
+  jwt:
+    secret: ${JWT_SECRET:fbTER7biIlO7t6wK+rWoY5lHd1l73QLMsyE06csKy+k=}
+    # token 有效期，单位分钟
+    expire-minutes: ${JWT_EXPIRE_MINUTES:120}
+    issuer: device-management-system

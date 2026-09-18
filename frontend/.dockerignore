@@ -1,0 +1,19 @@
+# node_modules 必须排除！
+#
+# 如果本机的 node_modules 跟着构建上下文进了镜像，会在 COPY . . 那一步
+# 覆盖掉容器里刚 pnpm install 出来的那份。而 pnpm 的 node_modules 是一堆
+# 指向 .pnpm store 的相对软链接，复制过去后链接目标不存在，
+# 构建会以一堆 "Cannot find module" 失败。
+node_modules
+
+# 本机构建产物同理，没必要进上下文
+dist
+
+# 编辑器 / git / 日志
+.git
+.gitignore
+.idea
+.vscode
+*.log
+npm-debug.log*
+pnpm-debug.log*

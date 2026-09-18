@@ -1,0 +1,25 @@
+# ============================================================
+# 统一行尾处理
+#
+# 仓库里一律用 LF 存储，检出时按规则转换。
+# 不加这个的话，Windows 上的 git 默认 core.autocrlf=true 会把整个
+# 工作区都标成"已修改"，出现满屏假 diff，很容易误提交。
+# ============================================================
+
+# 默认：自动识别文本文件，仓库内统一存 LF
+* text=auto eol=lf
+
+# Windows 批处理脚本必须保留 CRLF，否则 cmd 解析可能出问题
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# 二进制文件不做任何行尾转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.jar binary
+*.woff binary
+*.woff2 binary

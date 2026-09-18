@@ -1,0 +1,16 @@
+# 构建上下文里不需要的东西。
+#
+# target/ 必须排除：那是本机 mvn 编译的产物，如果跟着上下文进了镜像，
+# 可能覆盖掉容器内新编译的结果，或者让镜像莫名变大。
+target/
+.git/
+.gitignore
+.idea/
+*.iml
+HELP.md
+mvnw
+mvnw.cmd
+.mvn/
+
+# 说明：本 Dockerfile 用的是 maven 官方镜像，自带 mvn，
+# 所以项目自带的 mvnw 包装器不需要复制进去。
