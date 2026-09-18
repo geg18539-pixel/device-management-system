@@ -1,6 +1,8 @@
 package com.yan.backend.interceptor;
 
+import com.yan.backend.annotation.RequireRole;
 import com.yan.backend.common.JwtUtil;
+import com.yan.backend.common.LoginUser;
 import com.yan.backend.common.UserContext;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
@@ -8,18 +10,18 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Component;
+import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import java.io.IOException;
+import java.util.Set;
 
 /**
- * JWT 校验拦截器。
+ * JWT 校验 + 角色鉴权拦截器。
  *
  * <p>注意：这里实现的是 HandlerInterceptor 接口本身。
  * 不要照抄老教程写 {@code extends HandlerInterceptorAdapter} ——
- * 那个适配器类在 Spring Framework 6 就已经废弃、Spring Framework 7 里已被删除，
- * 我解包 spring-webmvc-7.0.9.jar 确认过它不存在了。虽然接口只有三个方法都有
- * default 实现，继承接口比继承类也更合适。
+ * 那个适配器类在 Spring Framework 6 就已经废弃、Spring Framework 7 里已被删除。
  */
 @Component
 public class JwtInterceptor implements HandlerInterceptor {
@@ -46,23 +48,38 @@ public class JwtInterceptor implements HandlerInterceptor {
 
         String header = request.getHeader(HEADER_NAME);
         if (header == null || !header.startsWith(TOKEN_PREFIX)) {
-            writeUnauthorized(response, "未登录或登录已过期，请先登录");
+            writeError(response, HttpServletResponse.SC_UNAUTHORIZED,
+                    "未登录或登录已过期，请先登录");
             return false;
         }
 
         String token = header.substring(TOKEN_PREFIX.length()).trim();
 
+        LoginUser loginUser;
         try {
-            UserContext.set(jwtUtil.parseToken(token));
-            return true;
+            loginUser = jwtUtil.parseToken(token);
         } catch (ExpiredJwtException e) {
-            // 单独捕获过期，前端据此做"静默续期"或提示重新登录
-            writeUnauthorized(response, "登录已过期，请重新登录");
+            writeError(response, HttpServletResponse.SC_UNAUTHORIZED, "登录已过期，请重新登录");
+            return false;
         } catch (JwtException | IllegalArgumentException e) {
-            // 签名不对、格式破损、issuer 不匹配等都归到这里
-            writeUnauthorized(response, "登录凭证无效，请重新登录");
+            writeError(response, HttpServletResponse.SC_UNAUTHORIZED, "登录凭证无效，请重新登录");
+            return false;
         }
-        return false;
+
+        // ★ 角色校验必须放在 UserContext.set() **之前**。
+        //
+        // 原因：preHandle 返回 false 时，Spring **不会**调用 afterCompletion，
+        // 而清理 ThreadLocal 的代码就在 afterCompletion 里。
+        // 如果先 set 再拒绝，登录信息就会留在当前线程上 ——
+        // Tomcat 线程是池化复用的，下一个请求（哪怕是没登录的）会读到上一个用户的信息，
+        // 既造成越权，也让 ThreadLocal 无法被 GC。
+        if (!hasRequiredRole(handler, loginUser)) {
+            writeError(response, HttpServletResponse.SC_FORBIDDEN, "没有权限执行该操作");
+            return false;
+        }
+
+        UserContext.set(loginUser);
+        return true;
     }
 
     @Override
@@ -70,28 +87,62 @@ public class JwtInterceptor implements HandlerInterceptor {
                                 HttpServletResponse response,
                                 Object handler,
                                 Exception ex) {
-        // 这一行不能省。
-        // preHandle 里往 ThreadLocal 塞了登录用户，Tomcat 的线程是复用池化的，
-        // 不清理的话下一个请求（哪怕是未登录的请求）会读到上一个请求的用户，
-        // 造成越权；同时 ThreadLocal 持有的对象也无法被 GC，长期运行会内存泄漏。
+        // 见上面 preHandle 里的说明，这一行不能省
         UserContext.clear();
     }
 
     /**
-     * 输出 401 响应。
+     * 判断当前用户是否满足接口要求的角色。
      *
-     * <p>这里手写 JSON 字符串而不用 ObjectMapper 注入，是刻意为之：
-     * Spring Boot 4 默认已切换到 Jackson 3（包名从 com.fasterxml.jackson
-     * 变成 tools.jackson），而无参的 ObjectMapper 到底该注入哪个类型
-     * 取决于 classpath 上具体有哪个 Jackson，容易写错版本导致编译问题。
-     * 这里的三条消息都是固定文案、不含引号和反斜杠，直接拼接是安全的。
-     * 等 5.3 需要序列化实体时，再统一确认 Jackson 版本。
+     * <p>没有标 @RequireRole 的接口一律放行（只要求登录）。
      */
-    private void writeUnauthorized(HttpServletResponse response, String message) throws IOException {
-        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+    private boolean hasRequiredRole(Object handler, LoginUser loginUser) {
+        // 静态资源等非 Controller 方法的请求，handler 不是 HandlerMethod，不做角色校验
+        if (!(handler instanceof HandlerMethod handlerMethod)) {
+            return true;
+        }
+
+        // 先看方法上的注解，再看类上的 —— 方法优先，
+        // 这样可以在一个整体受限的 Controller 里单独放开某个接口
+        RequireRole required = handlerMethod.getMethodAnnotation(RequireRole.class);
+        if (required == null) {
+            // getBeanType() 内部已经用 ClassUtils.getUserClass 处理过 CGLIB 代理。
+            // 这点在本项目里是实际需要的：LogAspect 会给 Controller 生成代理类，
+            // 直接反射代理类的注解会拿不到。
+            required = handlerMethod.getBeanType().getAnnotation(RequireRole.class);
+        }
+
+        if (required == null || required.value().length == 0) {
+            return true;
+        }
+
+        // 拥有其中任意一个角色即可
+        Set<String> owned = loginUser.roles();
+        if (owned == null || owned.isEmpty()) {
+            return false;
+        }
+        for (String role : required.value()) {
+            if (owned.contains(role)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 输出错误响应。
+     *
+     * <p>手写 JSON 而不是用 ObjectMapper 注入，原因见 5.1 时的说明：
+     * Boot 4 的 Spring MVC 用的是 Jackson 3（tools.jackson），
+     * 而 classpath 上同时存在 Jackson 2（jjwt 带进来的），注入时容易选错类型。
+     * 这里几条消息都是固定文案、不含引号和反斜杠，直接拼接是安全的。
+     */
+    private void writeError(HttpServletResponse response, int status, String message)
+            throws IOException {
+        response.setStatus(status);
         response.setContentType("application/json");
         response.setCharacterEncoding("UTF-8");
         response.getWriter().write(
-                "{\"code\":401,\"message\":\"" + message + "\",\"data\":null}");
+                "{\"code\":" + status + ",\"message\":\"" + message + "\",\"data\":null}");
     }
 }

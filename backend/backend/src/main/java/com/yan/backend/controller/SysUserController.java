@@ -1,6 +1,7 @@
 package com.yan.backend.controller;
 
 import com.yan.backend.annotation.Log;
+import com.yan.backend.annotation.RequireRole;
 import com.yan.backend.common.Result;
 import com.yan.backend.dto.AssignRolesRequest;
 import com.yan.backend.dto.PageResult;
@@ -29,12 +30,13 @@ import java.util.Map;
  * <p>写操作都标了 @Log，会被 LogAspect 拦截并异步记入 sys_oper_log；
  * 查询接口不记，免得日志表被 GET 请求刷爆。
  *
- * <p><b>当前已知的权限缺口</b>：这些接口只校验了"有没有登录"（由 JwtInterceptor 负责），
- * <b>没有校验"是不是管理员"</b>。也就是说 operator 角色拿着 token 也能调这些接口建账号。
- * 前端侧边栏会把菜单藏起来，但那只是界面上的隐藏，不能当安全措施。
- * 要补上需要在拦截器或 Controller 加角色校验（比如自定义一个 @RequireRole 注解），
- * 目前刻意没做，避免超出本轮范围。
+ * <p>类上的 @RequireRole("admin") 由 JwtInterceptor 校验：非 admin 角色访问会拿到 403。
+ * 这是接口层的真实保护，和前端侧边栏隐藏菜单不是一回事 —— 后者只是界面效果。
+ *
+ * <p>注意它只保护了本 Controller。以后在 /api/system 下新增控制器时，
+ * 要记得同样加上 @RequireRole，否则新接口默认是"登录即可访问"的。
  */
+@RequireRole("admin")
 @RestController
 @RequestMapping("/api/system/users")
 public class SysUserController {

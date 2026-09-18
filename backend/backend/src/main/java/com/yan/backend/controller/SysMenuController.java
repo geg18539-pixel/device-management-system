@@ -1,6 +1,7 @@
 package com.yan.backend.controller;
 
 import com.yan.backend.annotation.Log;
+import com.yan.backend.annotation.RequireRole;
 import com.yan.backend.common.Result;
 import com.yan.backend.dto.SysMenuTreeVO;
 import com.yan.backend.entity.SysMenu;
@@ -19,6 +20,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+/** 菜单管理。仅 admin 角色可访问（由 JwtInterceptor 校验 @RequireRole）。 */
+@RequireRole("admin")
 @RestController
 @RequestMapping("/api/system/menus")
 public class SysMenuController {
