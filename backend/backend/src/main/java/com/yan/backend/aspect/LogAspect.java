@@ -1,6 +1,7 @@
 package com.yan.backend.aspect;
 
 import com.yan.backend.annotation.Log;
+import com.yan.backend.common.RequestUtils;
 import com.yan.backend.common.UserContext;
 import com.yan.backend.entity.SysOperLog;
 import jakarta.servlet.http.HttpServletRequest;
@@ -10,8 +11,6 @@ import org.aspectj.lang.annotation.Aspect;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
 
 /**
  * 操作日志切面。
@@ -66,7 +65,7 @@ public class LogAspect {
         operLog.setMethod(joinPoint.getSignature().toShortString());
         operLog.setCostTime(cost);
 
-        HttpServletRequest request = currentRequest();
+        HttpServletRequest request = RequestUtils.currentRequest();
         if (request != null) {
             operLog.setRequestMethod(request.getMethod());
             String url = request.getRequestURI();
@@ -74,7 +73,9 @@ public class LogAspect {
                 url = url + "?" + request.getQueryString();
             }
             operLog.setRequestUrl(truncate(url, 500));
-            operLog.setIp(resolveClientIp(request));
+            // 取 IP 的逻辑抽到了 RequestUtils，登录日志那边也用同一份 ——
+            // 之前它俩各写一份，迟早会不一致
+            operLog.setIp(RequestUtils.getClientIp());
         }
 
         // 当前操作人来自 JwtInterceptor 塞进 ThreadLocal 的登录信息。
@@ -92,36 +93,6 @@ public class LogAspect {
         }
 
         return operLog;
-    }
-
-    private HttpServletRequest currentRequest() {
-        // 非 HTTP 线程（比如异步线程、定时任务）里拿不到，返回 null 即可
-        if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attrs) {
-            return attrs.getRequest();
-        }
-        return null;
-    }
-
-    /**
-     * 解析真实客户端 IP。
-     *
-     * <p>经过 Nginx 反向代理后，request.getRemoteAddr() 拿到的是 Nginx 容器的 IP，
-     * 真实来源在 X-Forwarded-For 里。那个头是逗号分隔的链，第一个才是客户端。
-     * 项目里的 frontend/nginx.conf 已经配了 proxy_set_header X-Real-IP / X-Forwarded-For。
-     */
-    private String resolveClientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            int comma = forwarded.indexOf(',');
-            return truncate((comma > 0 ? forwarded.substring(0, comma) : forwarded).trim(), 50);
-        }
-
-        String realIp = request.getHeader("X-Real-IP");
-        if (realIp != null && !realIp.isBlank()) {
-            return truncate(realIp.trim(), 50);
-        }
-
-        return truncate(request.getRemoteAddr(), 50);
     }
 
     private String truncate(String value, int max) {

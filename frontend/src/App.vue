@@ -47,6 +47,7 @@ const allMenus: MenuItem[] = [
       { path: '/system/users', title: '用户管理', roles: ['admin'] },
       { path: '/system/roles', title: '角色管理', roles: ['admin'] },
       { path: '/system/menus', title: '菜单管理', roles: ['admin'] },
+      { path: '/system/login-logs', title: '登录日志', roles: ['admin'] },
     ],
   },
 ]

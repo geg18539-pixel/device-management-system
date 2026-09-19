@@ -40,9 +40,10 @@ public class DataInitializer implements CommandLineRunner {
     @Override
     public void run(String... args) {
         seedSafely("RBAC 基础数据", seeder::seedRbacData);
-        // 按钮权限单独一块，有独立的幂等判断 —— 老库上 sys_user 已有数据，
-        // 挂在 RBAC 那块里会永远走不到
-        seedSafely("按钮权限", seeder::seedButtonPerms);
+        // 菜单与权限点：**每次启动都跑**，靠逐条判断做幂等。
+        // 不能加"已经有就整体跳过"的粗粒度开关，否则以后新增的权限点
+        // 在老库上永远补不上（这个坑踩过两次了）
+        seedSafely("菜单与权限点", seeder::seedMenusAndPerms);
         seedSafely("设备分类", seeder::seedDeviceCategories);
         seedSafely("演示设备", seeder::seedDemoDevices);
     }

@@ -23,6 +23,9 @@ public interface SysMenuRepository extends JpaRepository<SysMenu, Long> {
     /** 该权限标识是否已被别的菜单/按钮占用 */
     boolean existsByPerms(String perms);
 
+    /** 按权限标识找菜单/按钮，用于种子数据的逐条幂等判断 */
+    java.util.Optional<SysMenu> findByPerms(String perms);
+
     /** 是否已经种过按钮权限，用于种子数据的幂等判断 */
     boolean existsByMenuType(String menuType);
 

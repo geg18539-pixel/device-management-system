@@ -74,6 +74,19 @@ public class SysUser {
     private String status = "正常";
 
     /**
+     * 最后登录时间 / 最后登录 IP。
+     *
+     * <p>由登录接口在认证成功后写入（见 AuthServiceImpl）。允许为空：
+     * 这张表在加这两个字段之前就有数据了，而且新建但从未登录过的账号本来也没有值。
+     */
+    @Column(name = "last_login_time")
+    private LocalDateTime lastLoginTime;
+
+    @Size(max = 50, message = "IP 不能超过 50 个字符")
+    @Column(name = "last_login_ip", length = 50)
+    private String lastLoginIp;
+
+    /**
      * 用户拥有的角色。
      *
      * <p>用 LAZY 加载。这里要特别注意：application.yml 里开了 open-in-view=false，
@@ -154,6 +167,22 @@ public class SysUser {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public LocalDateTime getLastLoginTime() {
+        return lastLoginTime;
+    }
+
+    public void setLastLoginTime(LocalDateTime lastLoginTime) {
+        this.lastLoginTime = lastLoginTime;
+    }
+
+    public String getLastLoginIp() {
+        return lastLoginIp;
+    }
+
+    public void setLastLoginIp(String lastLoginIp) {
+        this.lastLoginIp = lastLoginIp;
     }
 
     public Set<SysRole> getRoles() {

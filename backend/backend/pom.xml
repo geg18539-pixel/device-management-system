@@ -98,6 +98,21 @@
             <artifactId>spring-boot-starter-aspectj</artifactId>
         </dependency>
 
+        <!--
+          Excel 导出（生成真正的 .xlsx）。
+
+          选 Apache POI 而不是 EasyExcel：EasyExcel 已经改名为 FastExcel
+          （坐标从 com.alibaba:easyexcel 变成 cn.idev.excel:fastexcel），
+          用旧坐标有拿到废弃版本的风险。POI 是这套东西的底层实现，API 多年稳定。
+
+          注意 Boot 的 BOM **不管理** POI 版本，必须自己写 version。
+        -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.5.1</version>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-devtools</artifactId>

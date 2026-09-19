@@ -62,6 +62,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '菜单管理', roles: ['admin'] },
   },
   {
+    path: '/system/login-logs',
+    name: 'LoginLog',
+    component: () => import('../views/LoginLogView.vue'),
+    meta: { title: '登录日志', roles: ['admin'] },
+  },
+  {
     // 兜底：访问不存在的路径时回到设备列表
     path: '/:pathMatch(.*)*',
     redirect: '/devices',

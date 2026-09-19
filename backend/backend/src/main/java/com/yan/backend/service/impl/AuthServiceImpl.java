@@ -1,6 +1,7 @@
 package com.yan.backend.service.impl;
 
 import com.yan.backend.common.JwtUtil;
+import com.yan.backend.common.RequestUtils;
 import com.yan.backend.dto.LoginRequest;
 import com.yan.backend.dto.LoginResponse;
 import com.yan.backend.entity.SysRole;
@@ -8,10 +9,12 @@ import com.yan.backend.entity.SysUser;
 import com.yan.backend.exception.AuthException;
 import com.yan.backend.repository.SysUserRepository;
 import com.yan.backend.service.AuthService;
+import com.yan.backend.service.LoginLogRecorder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -21,32 +24,53 @@ public class AuthServiceImpl implements AuthService {
     private final SysUserRepository sysUserRepository;
     private final JwtUtil jwtUtil;
     private final PasswordEncoder passwordEncoder;
+    private final LoginLogRecorder loginLogRecorder;
 
     public AuthServiceImpl(SysUserRepository sysUserRepository,
                            JwtUtil jwtUtil,
-                           PasswordEncoder passwordEncoder) {
+                           PasswordEncoder passwordEncoder,
+                           LoginLogRecorder loginLogRecorder) {
         this.sysUserRepository = sysUserRepository;
         this.jwtUtil = jwtUtil;
         this.passwordEncoder = passwordEncoder;
+        this.loginLogRecorder = loginLogRecorder;
     }
 
+    /**
+     * 校验用户名密码并签发 token。
+     *
+     * <p><b>注意这里的事务是**可写**的（不是 readOnly）</b>：
+     * 登录成功要更新 lastLoginTime / lastLoginIp。之前的 readOnly=true
+     * 会让 Hibernate 进入只读模式、脏检查不生效，那两个字段会**静默不更新** ——
+     * 不报错、也不写库，最难查的那种。
+     */
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public LoginResponse login(LoginRequest request) {
-        // 用带 EntityGraph 的查询，角色在这一步就一并查出来了。
-        // 如果换成普通的 findById 之类的查询，出了这个事务再访问 getRoles()
-        // 会抛 LazyInitializationException（因为开了 open-in-view=false）。
-        SysUser user = sysUserRepository.findByUsername(request.getUsername())
-                .orElseThrow(() -> new AuthException("用户名或密码错误"));
 
-        // BCrypt 比对。注意这里不能直接比较字符串 —— BCrypt 每次加密结果都不同，
-        // 必须用 matches() 做哈希校验。
-        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+        // 请求信息只取一次，后面成功失败的日志都用它
+        String ip = RequestUtils.getClientIp();
+        String userAgent = RequestUtils.getUserAgent();
+
+        SysUser user = sysUserRepository.findByUsername(request.getUsername()).orElse(null);
+
+        if (user == null) {
+            // 日志里记真实原因（"用户名不存在"），但**返回给用户的文案要和密码错误一致** ——
+            // 否则等于提供了一个"这个账号存不存在"的探测接口
+            loginLogRecorder.recordFailure(request.getUsername(), null, ip, userAgent, "用户名不存在");
             throw new AuthException("用户名或密码错误");
         }
 
-        // 不区分"用户名不存在"和"密码错误"的提示文案，避免被用来枚举用户名
+        // BCrypt 比对。注意不能直接比较字符串 —— BCrypt 每次加密结果都不同，
+        // 必须用 matches() 做哈希校验
+        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+            loginLogRecorder.recordFailure(user.getUsername(), user.getId(), ip, userAgent, "密码错误");
+            throw new AuthException("用户名或密码错误");
+        }
+
         if (!"正常".equals(user.getStatus())) {
+            loginLogRecorder.recordFailure(user.getUsername(), user.getId(), ip, userAgent,
+                    "账号已停用");
             throw new AuthException("账号已停用，请联系管理员");
         }
 
@@ -54,6 +78,13 @@ public class AuthServiceImpl implements AuthService {
                 .filter(role -> "正常".equals(role.getStatus()))
                 .map(SysRole::getRoleKey)
                 .collect(Collectors.toSet());
+
+        // 记录最后登录信息。用户页面的详情弹窗和列表都展示这两个字段
+        user.setLastLoginTime(LocalDateTime.now());
+        user.setLastLoginIp(ip);
+        sysUserRepository.save(user);
+
+        loginLogRecorder.recordSuccess(user, ip, userAgent);
 
         String token = jwtUtil.generateToken(
                 user.getId(), user.getUsername(), user.getNickname(), roleKeys);

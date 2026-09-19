@@ -23,6 +23,10 @@ public class SysUserVO {
     private String status;
     private LocalDateTime createTime;
 
+    /** 最后一次登录的时间 / 来源 IP。从未登录过则是 null */
+    private LocalDateTime lastLoginTime;
+    private String lastLoginIp;
+
     /** 角色 id 列表，供"分配角色"弹窗回显勾选状态 */
     private List<Long> roleIds;
 
@@ -83,6 +87,22 @@ public class SysUserVO {
 
     public void setCreateTime(LocalDateTime createTime) {
         this.createTime = createTime;
+    }
+
+    public LocalDateTime getLastLoginTime() {
+        return lastLoginTime;
+    }
+
+    public void setLastLoginTime(LocalDateTime lastLoginTime) {
+        this.lastLoginTime = lastLoginTime;
+    }
+
+    public String getLastLoginIp() {
+        return lastLoginIp;
+    }
+
+    public void setLastLoginIp(String lastLoginIp) {
+        this.lastLoginIp = lastLoginIp;
     }
 
     public List<Long> getRoleIds() {
