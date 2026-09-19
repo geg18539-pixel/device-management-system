@@ -7,6 +7,7 @@ import com.yan.backend.exception.ResourceNotFoundException;
 import com.yan.backend.repository.SysMenuRepository;
 import com.yan.backend.repository.SysRoleRepository;
 import com.yan.backend.repository.SysUserRepository;
+import com.yan.backend.service.PermissionService;
 import com.yan.backend.service.SysRoleService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -26,13 +27,16 @@ public class SysRoleServiceImpl implements SysRoleService {
     private final SysRoleRepository sysRoleRepository;
     private final SysMenuRepository sysMenuRepository;
     private final SysUserRepository sysUserRepository;
+    private final PermissionService permissionService;
 
     public SysRoleServiceImpl(SysRoleRepository sysRoleRepository,
                               SysMenuRepository sysMenuRepository,
-                              SysUserRepository sysUserRepository) {
+                              SysUserRepository sysUserRepository,
+                              PermissionService permissionService) {
         this.sysRoleRepository = sysRoleRepository;
         this.sysMenuRepository = sysMenuRepository;
         this.sysUserRepository = sysUserRepository;
+        this.permissionService = permissionService;
     }
 
     @Override
@@ -88,7 +92,12 @@ public class SysRoleServiceImpl implements SysRoleService {
         if (role.getStatus() != null) {
             existing.setStatus(role.getStatus());
         }
-        return sysRoleRepository.save(existing);
+        SysRole saved = sysRoleRepository.save(existing);
+
+        // 角色状态改成"停用"会直接影响该角色下所有用户的权限（permal 查询里过滤了状态），
+        // 所以改角色也要清缓存
+        permissionService.evictAfterCommit();
+        return saved;
     }
 
     @Override
@@ -109,6 +118,7 @@ public class SysRoleServiceImpl implements SysRoleService {
         }
 
         sysRoleRepository.deleteById(id);
+        permissionService.evictAfterCommit();
     }
 
     @Override
@@ -130,6 +140,46 @@ public class SysRoleServiceImpl implements SysRoleService {
         // Hibernate 会自动算出中间表要删哪些、插哪些。
         role.setMenus(menus);
         sysRoleRepository.save(role);
+
+        // 权限变了，必须清权限缓存 —— 否则改完之后用户还要等 5 分钟才生效。
+        // 用 evictAfterCommit：事务没提交就清的话，别的请求可能把旧权限又读回缓存。
+        permissionService.evictAfterCommit();
+    }
+
+    @Override
+    @Transactional
+    public SysRole copy(Long id) {
+        SysRole source = findById(id);
+
+        SysRole copied = new SysRole();
+        copied.setRoleName(source.getRoleName() + "（副本）");
+        copied.setRoleKey(buildUniqueCopyRoleKey(source.getRoleKey()));
+        copied.setSortOrder(source.getSortOrder() == null ? 0 : source.getSortOrder() + 1);
+        // 复制出来的角色默认**停用**：它的权限还没经人工确认，
+        // 直接启用万一被随手分配出去，等于把权限悄悄放大了
+        copied.setStatus("停用");
+        copied.setRemark("由「" + source.getRoleName() + "」复制而来");
+
+        // 把源角色的菜单和按钮权限一并带过来。
+        // 这里必须 new HashSet：@ManyToMany 的集合是个共享引用，
+        // 直接把 source.getMenus() 传过去，两个角色就指向同一批实体对象，
+        // 之后任一边改动都可能互相影响。
+        copied.setMenus(new HashSet<>(source.getMenus()));
+
+        SysRole saved = sysRoleRepository.save(copied);
+        permissionService.evictAfterCommit();
+        return saved;
+    }
+
+    /** 生成不冲突的副本 roleKey：operator → operator_copy → operator_copy2 → ... */
+    private String buildUniqueCopyRoleKey(String baseKey) {
+        String candidate = baseKey + "_copy";
+        int suffix = 2;
+        while (sysRoleRepository.existsByRoleKey(candidate)) {
+            candidate = baseKey + "_copy" + suffix;
+            suffix++;
+        }
+        return candidate;
     }
 
     @Override

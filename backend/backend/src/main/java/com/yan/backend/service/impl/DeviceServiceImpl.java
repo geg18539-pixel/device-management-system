@@ -9,12 +9,16 @@ import com.yan.backend.dto.PageResult;
 import com.yan.backend.entity.Device;
 import com.yan.backend.entity.DeviceCategory;
 import com.yan.backend.entity.DeviceRepair;
+import com.yan.backend.entity.DeviceRepairLog;
+import com.yan.backend.event.RepairCreatedEvent;
 import com.yan.backend.exception.ResourceNotFoundException;
 import com.yan.backend.repository.DeviceCategoryRepository;
+import com.yan.backend.repository.DeviceRepairLogRepository;
 import com.yan.backend.repository.DeviceRepairRepository;
 import com.yan.backend.repository.DeviceRepository;
 import com.yan.backend.service.DeviceService;
 import jakarta.persistence.criteria.Predicate;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -36,13 +40,19 @@ public class DeviceServiceImpl implements DeviceService {
     private final DeviceRepository deviceRepository;
     private final DeviceCategoryRepository deviceCategoryRepository;
     private final DeviceRepairRepository deviceRepairRepository;
+    private final DeviceRepairLogRepository deviceRepairLogRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public DeviceServiceImpl(DeviceRepository deviceRepository,
                              DeviceCategoryRepository deviceCategoryRepository,
-                             DeviceRepairRepository deviceRepairRepository) {
+                             DeviceRepairRepository deviceRepairRepository,
+                             DeviceRepairLogRepository deviceRepairLogRepository,
+                             ApplicationEventPublisher eventPublisher) {
         this.deviceRepository = deviceRepository;
         this.deviceCategoryRepository = deviceCategoryRepository;
         this.deviceRepairRepository = deviceRepairRepository;
+        this.deviceRepairLogRepository = deviceRepairLogRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -205,6 +215,22 @@ public class DeviceServiceImpl implements DeviceService {
         repair.setReporter(reporter);
         repair.setReportTime(LocalDateTime.now());
         deviceRepairRepository.save(repair);
+
+        // 建单日志。工单的维修历史从这里开始，后面的状态流转和人工记录继续往上加。
+        DeviceRepairLog createdLog = new DeviceRepairLog();
+        createdLog.setRepairId(repair.getId());
+        createdLog.setLogType(DeviceRepairLog.TYPE_CREATED);
+        createdLog.setContent("工单已创建，故障描述：" + request.getFaultDesc());
+        createdLog.setOperator(reporter);
+        createdLog.setLogTime(repair.getReportTime());
+        deviceRepairLogRepository.save(createdLog);
+
+        // 发布事件触发 AI 分析。
+        // 这里只是"发个通知"就返回，不直接调 AI —— 直接调会让用户等十几秒，
+        // 而且前端 axios 超时是 10 秒，必然报错。
+        // 监听器会在**本事务提交之后**才真正启动分析，避免异步线程读不到刚插入的工单。
+        eventPublisher.publishEvent(new RepairCreatedEvent(
+                repair.getId(), repair.getDeviceName(), repair.getFaultDesc()));
 
         // 借出中的设备送去维修，顺手把借用信息清掉 ——
         // 否则工单完成后设备会既"在线"又显示着借用人

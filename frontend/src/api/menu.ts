@@ -1,6 +1,6 @@
 import request from '../utils/request'
 
-/** 菜单类型：M 目录 / F 菜单 / B 按钮 */
+/** 菜单类型：M 目录 / F 菜单 / B 按钮（按钮只做权限控制，不出现在侧边栏） */
 export const MENU_TYPE = {
   DIR: 'M',
   MENU: 'F',
@@ -14,6 +14,13 @@ export const MENU_TYPE_OPTIONS = [
   { label: '菜单', value: MENU_TYPE.MENU },
   { label: '按钮', value: MENU_TYPE.BUTTON },
 ]
+
+/** 类型标签的显示文案与配色，菜单管理和角色授权树共用 */
+export const MENU_TYPE_META: Record<string, { label: string; tag: 'primary' | 'success' | 'info' }> = {
+  [MENU_TYPE.DIR]: { label: '目录', tag: 'primary' },
+  [MENU_TYPE.MENU]: { label: '菜单', tag: 'success' },
+  [MENU_TYPE.BUTTON]: { label: '按钮', tag: 'info' },
+}
 
 /** 对应后端 dto/SysMenuTreeVO.java */
 export interface SysMenuTree {

@@ -49,6 +49,16 @@ export function deleteRole(id: number) {
   return request.delete<void>(`/system/roles/${id}`)
 }
 
+/**
+ * 复制角色（连同它已分配的菜单和按钮权限）。
+ *
+ * 新建出来的角色 roleKey 会加 _copy 后缀，状态默认是**停用** ——
+ * 权限还没经人工确认，先不让它生效。
+ */
+export function copyRole(id: number) {
+  return request.post<SysRole>(`/system/roles/${id}/copy`)
+}
+
 /** 该角色已拥有的菜单 id，供 el-tree 回显 */
 export function getRoleMenuIds(id: number) {
   return request.get<number[]>(`/system/roles/${id}/menus`)

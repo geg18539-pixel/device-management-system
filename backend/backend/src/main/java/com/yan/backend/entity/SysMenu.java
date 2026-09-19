@@ -28,6 +28,19 @@ public class SysMenu {
     /** 顶级菜单的 parentId 约定值 */
     public static final Long ROOT_PARENT_ID = 0L;
 
+    // ---------- 菜单类型常量 ----------
+    /** 目录：侧边栏上可展开的父级，没有自己的页面 */
+    public static final String TYPE_DIR = "M";
+    /** 菜单：对应一个前端页面 */
+    public static final String TYPE_MENU = "F";
+    /**
+     * 按钮：不对应任何界面，纯粹是一个**权限点**。
+     *
+     * <p>它不出现在侧边栏里，作用是把 perms 字段（如 sys:user:add）
+     * 和后端接口上的 @RequirePerm 对应起来，实现按钮级的细粒度权限控制。
+     */
+    public static final String TYPE_BUTTON = "B";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

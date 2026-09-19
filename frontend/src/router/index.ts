@@ -32,10 +32,10 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '维修工单', roles: ['admin', 'operator'] },
   },
   {
-    path: '/hello',
-    name: 'Hello',
-    component: () => import('../views/HelloView.vue'),
-    meta: { title: '联调测试', roles: ['admin', 'operator'] },
+    path: '/ai',
+    name: 'AiAssistant',
+    component: () => import('../views/AiAssistantView.vue'),
+    meta: { title: 'AI 助手', roles: ['admin', 'operator'] },
   },
   {
     path: '/system',

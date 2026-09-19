@@ -207,6 +207,95 @@ public class SystemDataSeeder {
     }
 
     // ============================================================
+    // 4. 按钮权限（细粒度 RBAC 的权限点）
+    //
+    // 单独一个方法、单独一个幂等判断 —— 不能挂在 initRbacData 里：
+    // 那个方法的开关是"sys_user 表为空"，而已经跑过一段时间的库上
+    // 早就有账号了，永远走不进去，按钮权限就永远种不上。
+    // ============================================================
+    @Transactional
+    public void seedButtonPerms() {
+        if (sysMenuRepository.existsByMenuType(SysMenu.TYPE_BUTTON)) {
+            log.info("已有按钮权限数据，跳过按钮权限初始化");
+            return;
+        }
+        log.info("开始初始化按钮权限点...");
+
+        // 按名称找到三个管理菜单，把按钮挂到它们下面
+        Map<String, SysMenu> menuByName = new HashMap<>();
+        for (SysMenu menu : sysMenuRepository.findAll()) {
+            menuByName.put(menu.getMenuName(), menu);
+        }
+
+        int created = 0;
+        created += addButtons(menuByName.get("用户管理"), List.of(
+                new String[]{"用户查询", "sys:user:list"},
+                new String[]{"用户新增", "sys:user:add"},
+                new String[]{"用户修改", "sys:user:edit"},
+                new String[]{"用户删除", "sys:user:remove"},
+                new String[]{"重置密码", "sys:user:reset"},
+                new String[]{"分配角色", "sys:user:assign"},
+                new String[]{"用户导出", "sys:user:export"}));
+
+        created += addButtons(menuByName.get("角色管理"), List.of(
+                new String[]{"角色查询", "sys:role:list"},
+                new String[]{"角色新增", "sys:role:add"},
+                new String[]{"角色修改", "sys:role:edit"},
+                new String[]{"角色删除", "sys:role:remove"},
+                new String[]{"分配权限", "sys:role:assign"}));
+
+        created += addButtons(menuByName.get("菜单管理"), List.of(
+                new String[]{"菜单查询", "sys:menu:list"},
+                new String[]{"菜单新增", "sys:menu:add"},
+                new String[]{"菜单修改", "sys:menu:edit"},
+                new String[]{"菜单删除", "sys:menu:remove"}));
+
+        // 给超级管理员角色补上新种的按钮权限。
+        // 虽然 admin 角色在拦截器里会绕过所有权限检查，但把这个角色补全
+        // 能让「角色管理 → 分配权限」页面上看到完整勾选状态，不至于一片空白。
+        if (sysRoleRepository.existsByRoleKey("admin")) {
+            SysRole adminRole = sysRoleRepository.findByRoleKey("admin").orElse(null);
+            if (adminRole != null) {
+                Set<SysMenu> menus = new HashSet<>(adminRole.getMenus());
+                menus.addAll(sysMenuRepository.findAllByOrderBySortOrderAsc());
+                adminRole.setMenus(menus);
+                sysRoleRepository.save(adminRole);
+            }
+        }
+
+        log.info("按钮权限点初始化完成，共新增 {} 个", created);
+    }
+
+    /** 给某个菜单挂一批按钮权限，返回**实际新建**的条数（已存在的会跳过，不计入） */
+    private int addButtons(SysMenu parent, List<String[]> buttons) {
+        if (parent == null) {
+            log.warn("找不到父菜单，跳过这批按钮权限：{}", buttons.isEmpty() ? "" : buttons.get(0)[0]);
+            return 0;
+        }
+
+        int created = 0;
+        int sort = 1;
+        for (String[] button : buttons) {
+            // 同一个权限标识只种一次。注意"用户查询"(sys:user:list) 这类会和
+            // 父菜单自带的 perms 重复，这里会跳过它 —— 菜单本身已经代表了这个权限点。
+            if (sysMenuRepository.existsByPerms(button[1])) {
+                continue;
+            }
+            SysMenu node = new SysMenu();
+            node.setMenuName(button[0]);
+            node.setParentId(parent.getId());
+            node.setMenuType(SysMenu.TYPE_BUTTON);
+            node.setPerms(button[1]);
+            node.setSortOrder(sort++);
+            // 按钮不出现在侧边栏里
+            node.setVisible(0);
+            sysMenuRepository.save(node);
+            created++;
+        }
+        return created;
+    }
+
+    // ============================================================
     // 辅助方法
     // ============================================================
 

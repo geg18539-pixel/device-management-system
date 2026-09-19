@@ -1,9 +1,11 @@
 package com.yan.backend.interceptor;
 
+import com.yan.backend.annotation.RequirePerm;
 import com.yan.backend.annotation.RequireRole;
 import com.yan.backend.common.JwtUtil;
 import com.yan.backend.common.LoginUser;
 import com.yan.backend.common.UserContext;
+import com.yan.backend.service.PermissionService;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -29,10 +31,24 @@ public class JwtInterceptor implements HandlerInterceptor {
     private static final String HEADER_NAME = "Authorization";
     private static final String TOKEN_PREFIX = "Bearer ";
 
-    private final JwtUtil jwtUtil;
+    /**
+     * 超级管理员角色标识。拥有这个角色的用户**绕过所有 @RequirePerm 检查**。
+     *
+     * <p>这是有意为之的取舍：不加绕过的话，每次新增一个按钮权限，
+     * 都得记得去「角色管理」里给 admin 勾上，否则管理员自己反而点不动新功能 ——
+     * 这种"把自己锁在门外"的情况在真实项目里非常常见。
+     *
+     * <p>代价是"给 admin 分配权限"在界面上更像一个展示。真正验证细粒度权限
+     * 要用非超管账号（比如 operator）去看。
+     */
+    private static final String SUPER_ADMIN_ROLE = "admin";
 
-    public JwtInterceptor(JwtUtil jwtUtil) {
+    private final JwtUtil jwtUtil;
+    private final PermissionService permissionService;
+
+    public JwtInterceptor(JwtUtil jwtUtil, PermissionService permissionService) {
         this.jwtUtil = jwtUtil;
+        this.permissionService = permissionService;
     }
 
     @Override
@@ -75,6 +91,13 @@ public class JwtInterceptor implements HandlerInterceptor {
         // 既造成越权，也让 ThreadLocal 无法被 GC。
         if (!hasRequiredRole(handler, loginUser)) {
             writeError(response, HttpServletResponse.SC_FORBIDDEN, "没有权限执行该操作");
+            return false;
+        }
+
+        // 权限校验同样必须在 UserContext.set() 之前
+        if (!hasRequiredPerm(handler, loginUser)) {
+            writeError(response, HttpServletResponse.SC_FORBIDDEN,
+                    "没有权限执行该操作，请联系管理员分配相应权限");
             return false;
         }
 
@@ -123,6 +146,43 @@ public class JwtInterceptor implements HandlerInterceptor {
         }
         for (String role : required.value()) {
             if (owned.contains(role)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 细粒度权限校验：接口要求的权限标识，用户是否具备。
+     *
+     * <p>和角色校验的区别见 {@link RequirePerm} 的说明。简单说：
+     * 角色校验问"你是不是管理员"，权限校验问"你有没有『新增用户』这个权限点"。
+     * 后者存在数据库里，管理员可以在界面上调整，不用改代码。
+     */
+    private boolean hasRequiredPerm(Object handler, LoginUser loginUser) {
+        if (!(handler instanceof HandlerMethod handlerMethod)) {
+            return true;
+        }
+
+        RequirePerm required = handlerMethod.getMethodAnnotation(RequirePerm.class);
+        if (required == null) {
+            required = handlerMethod.getBeanType().getAnnotation(RequirePerm.class);
+        }
+        if (required == null || required.value().length == 0) {
+            return true;
+        }
+
+        // 超管直接放行，理由见 SUPER_ADMIN_ROLE 的说明
+        if (loginUser.roles() != null && loginUser.roles().contains(SUPER_ADMIN_ROLE)) {
+            return true;
+        }
+
+        Set<String> owned = permissionService.getPerms(loginUser.userId());
+        if (owned.isEmpty()) {
+            return false;
+        }
+        for (String perm : required.value()) {
+            if (owned.contains(perm)) {
                 return true;
             }
         }

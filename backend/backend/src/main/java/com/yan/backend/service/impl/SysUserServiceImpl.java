@@ -9,6 +9,7 @@ import com.yan.backend.entity.SysUser;
 import com.yan.backend.exception.ResourceNotFoundException;
 import com.yan.backend.repository.SysRoleRepository;
 import com.yan.backend.repository.SysUserRepository;
+import com.yan.backend.service.PermissionService;
 import com.yan.backend.service.SysUserService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -32,13 +33,16 @@ public class SysUserServiceImpl implements SysUserService {
     private final SysUserRepository sysUserRepository;
     private final SysRoleRepository sysRoleRepository;
     private final PasswordEncoder passwordEncoder;
+    private final PermissionService permissionService;
 
     public SysUserServiceImpl(SysUserRepository sysUserRepository,
                               SysRoleRepository sysRoleRepository,
-                              PasswordEncoder passwordEncoder) {
+                              PasswordEncoder passwordEncoder,
+                              PermissionService permissionService) {
         this.sysUserRepository = sysUserRepository;
         this.sysRoleRepository = sysRoleRepository;
         this.passwordEncoder = passwordEncoder;
+        this.permissionService = permissionService;
     }
 
     @Override
@@ -114,6 +118,8 @@ public class SysUserServiceImpl implements SysUserService {
         // 传空数组才是"清空角色"。
         if (request.getRoleIds() != null) {
             existing.setRoles(resolveRoles(request.getRoleIds()));
+            // 角色变了权限就变了，清缓存让它立刻生效
+            permissionService.evictAfterCommit();
         }
 
         return toVO(sysUserRepository.save(existing));
@@ -135,6 +141,7 @@ public class SysUserServiceImpl implements SysUserService {
         }
 
         sysUserRepository.deleteById(id);
+        permissionService.evictAfterCommit();
     }
 
     @Override
@@ -143,6 +150,7 @@ public class SysUserServiceImpl implements SysUserService {
         SysUser user = getUser(userId);
         user.setRoles(resolveRoles(roleIds));
         sysUserRepository.save(user);
+        permissionService.evictAfterCommit();
     }
 
     @Override

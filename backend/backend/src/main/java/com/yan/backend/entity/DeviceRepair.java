@@ -5,6 +5,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -29,6 +30,20 @@ public class DeviceRepair {
     public static final String STATUS_PENDING = "待维修";
     public static final String STATUS_REPAIRING = "维修中";
     public static final String STATUS_FINISHED = "已完成";
+
+    // ---------- AI 分析状态常量 ----------
+    /** 刚建单，还没分析 */
+    public static final String AI_PENDING = "待分析";
+    /** 正在调用模型 */
+    public static final String AI_RUNNING = "分析中";
+    public static final String AI_DONE = "已完成";
+    /** 分析失败（模型没启动、超时、返回内容无法解析等）。失败不影响工单本身的使用 */
+    public static final String AI_FAILED = "失败";
+
+    // ---------- 严重程度常量 ----------
+    public static final String SEVERITY_HIGH = "高";
+    public static final String SEVERITY_MEDIUM = "中";
+    public static final String SEVERITY_LOW = "低";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -84,6 +99,50 @@ public class DeviceRepair {
     @Size(max = 500, message = "备注不能超过 500 个字符")
     @Column(name = "remark", length = 500)
     private String remark;
+
+    // ============================================================
+    // AI 智能分析结果
+    //
+    // 全部允许为空：这张表在引入 AI 之前就已经有数据了，
+    // 加 NOT NULL 列会让已有行校验失败（device_type 那个坑已经踩过一次）。
+    // ddl-auto=update 只会新增列，不会回填历史数据，所以旧工单这些字段就是 null，
+    // 前端按"没有分析结果"处理即可。
+    // ============================================================
+
+    /** AI 分析状态：待分析 / 分析中 / 已完成 / 失败 */
+    @Column(name = "ai_status", length = 20)
+    private String aiStatus = AI_PENDING;
+
+    /** AI 判断的严重程度：高 / 中 / 低 */
+    @Column(name = "ai_severity", length = 10)
+    private String aiSeverity;
+
+    /** AI 分析出的可能原因，多条用换行分隔 */
+    @Lob
+    @Column(name = "ai_possible_causes")
+    private String aiPossibleCauses;
+
+    /** AI 建议的维修步骤，多条用换行分隔 */
+    @Lob
+    @Column(name = "ai_suggestion")
+    private String aiSuggestion;
+
+    /** AI 估算的工时（小时） */
+    @Column(name = "ai_estimated_hours", precision = 6, scale = 1)
+    private BigDecimal aiEstimatedHours;
+
+    /** 分析用的模型名，便于以后换模型时区分结果来源 */
+    @Column(name = "ai_model", length = 50)
+    private String aiModel;
+
+    /** 分析完成时间 */
+    @Column(name = "ai_analyzed_at")
+    private LocalDateTime aiAnalyzedAt;
+
+    /** 分析失败的原因。有值就说明这次分析没成功，但工单本身是正常的 */
+    @Lob
+    @Column(name = "ai_error")
+    private String aiError;
 
     @CreationTimestamp
     @Column(name = "create_time", nullable = false, updatable = false)
@@ -197,5 +256,71 @@ public class DeviceRepair {
 
     public void setUpdateTime(LocalDateTime updateTime) {
         this.updateTime = updateTime;
+    }
+
+    // ---------- AI 分析字段的 getter / setter ----------
+
+    public String getAiStatus() {
+        return aiStatus;
+    }
+
+    public void setAiStatus(String aiStatus) {
+        this.aiStatus = aiStatus;
+    }
+
+    public String getAiSeverity() {
+        return aiSeverity;
+    }
+
+    public void setAiSeverity(String aiSeverity) {
+        this.aiSeverity = aiSeverity;
+    }
+
+    public String getAiPossibleCauses() {
+        return aiPossibleCauses;
+    }
+
+    public void setAiPossibleCauses(String aiPossibleCauses) {
+        this.aiPossibleCauses = aiPossibleCauses;
+    }
+
+    public String getAiSuggestion() {
+        return aiSuggestion;
+    }
+
+    public void setAiSuggestion(String aiSuggestion) {
+        this.aiSuggestion = aiSuggestion;
+    }
+
+    public BigDecimal getAiEstimatedHours() {
+        return aiEstimatedHours;
+    }
+
+    public void setAiEstimatedHours(BigDecimal aiEstimatedHours) {
+        this.aiEstimatedHours = aiEstimatedHours;
+    }
+
+    public String getAiModel() {
+        return aiModel;
+    }
+
+    public void setAiModel(String aiModel) {
+        this.aiModel = aiModel;
+    }
+
+    public LocalDateTime getAiAnalyzedAt() {
+        return aiAnalyzedAt;
+    }
+
+    public void setAiAnalyzedAt(LocalDateTime aiAnalyzedAt) {
+        this.aiAnalyzedAt = aiAnalyzedAt;
+    }
+
+    public String getAiError() {
+        return aiError;
+    }
+
+    public void setAiError(String aiError) {
+        this.aiError = aiError;
     }
 }

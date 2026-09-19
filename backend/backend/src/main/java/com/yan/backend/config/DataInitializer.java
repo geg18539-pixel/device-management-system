@@ -40,6 +40,9 @@ public class DataInitializer implements CommandLineRunner {
     @Override
     public void run(String... args) {
         seedSafely("RBAC 基础数据", seeder::seedRbacData);
+        // 按钮权限单独一块，有独立的幂等判断 —— 老库上 sys_user 已有数据，
+        // 挂在 RBAC 那块里会永远走不到
+        seedSafely("按钮权限", seeder::seedButtonPerms);
         seedSafely("设备分类", seeder::seedDeviceCategories);
         seedSafely("演示设备", seeder::seedDemoDevices);
     }

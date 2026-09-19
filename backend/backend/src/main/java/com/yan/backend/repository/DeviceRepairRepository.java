@@ -20,6 +20,9 @@ public interface DeviceRepairRepository extends JpaRepository<DeviceRepair, Long
     /** 该设备是否还有未完工的工单 —— 用于"维修中的设备不能借用"之类的判断 */
     List<DeviceRepair> findByDeviceIdAndRepairStatusNot(Long deviceId, String repairStatus);
 
+    /** 全部未完工的工单，给 AI 的数据快照用 */
+    Page<DeviceRepair> findByRepairStatusNotOrderByReportTimeDesc(String repairStatus, Pageable pageable);
+
     /** 删除设备前检查是否有关联工单，避免留下悬空的 deviceId */
     boolean existsByDeviceId(Long deviceId);
 }

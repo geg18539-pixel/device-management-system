@@ -5,6 +5,7 @@ import com.yan.backend.dto.SysMenuTreeVO;
 import com.yan.backend.entity.SysMenu;
 import com.yan.backend.exception.ResourceNotFoundException;
 import com.yan.backend.repository.SysMenuRepository;
+import com.yan.backend.service.PermissionService;
 import com.yan.backend.service.SysMenuService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,9 +20,12 @@ import java.util.Map;
 public class SysMenuServiceImpl implements SysMenuService {
 
     private final SysMenuRepository sysMenuRepository;
+    private final PermissionService permissionService;
 
-    public SysMenuServiceImpl(SysMenuRepository sysMenuRepository) {
+    public SysMenuServiceImpl(SysMenuRepository sysMenuRepository,
+                              PermissionService permissionService) {
         this.sysMenuRepository = sysMenuRepository;
+        this.permissionService = permissionService;
     }
 
     @Override
@@ -107,6 +111,8 @@ public class SysMenuServiceImpl implements SysMenuService {
         }
 
         sysMenuRepository.deleteById(id);
+        // 删掉的可能是个按钮权限点，权限集合变了，清缓存
+        permissionService.evictAfterCommit();
     }
 
     private SysMenuTreeVO toVO(SysMenu menu) {

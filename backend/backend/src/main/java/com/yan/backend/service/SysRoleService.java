@@ -20,6 +20,15 @@ public interface SysRoleService {
 
     void delete(Long id);
 
+    /**
+     * 复制角色，连同它已分配的菜单和按钮权限一起。
+     *
+     * <p>新角色的 roleKey 会自动加后缀（如 operator → operator_copy），
+     * 角色名加「副本」，状态默认「停用」——新建的角色先不给用户用，
+     * 由管理员确认权限无误后再启用，避免复制出来就被误分配。
+     */
+    SysRole copy(Long id);
+
     /** 给角色分配菜单权限，传的是菜单 id 全量列表 */
     void assignMenus(Long roleId, List<Long> menuIds);
 

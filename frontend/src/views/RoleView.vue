@@ -9,6 +9,7 @@ import {
 } from 'element-plus'
 import {
   assignRoleMenus,
+  copyRole,
   createRole,
   deleteRole,
   getRoleMenuIds,
@@ -16,7 +17,7 @@ import {
   updateRole,
   type SysRole,
 } from '../api/role'
-import { getMenuTree, type SysMenuTree } from '../api/menu'
+import { MENU_TYPE_META, getMenuTree, type SysMenuTree } from '../api/menu'
 
 // ---------------- 列表 ----------------
 const loading = ref(false)
@@ -167,6 +168,29 @@ async function handleDelete(row: SysRole) {
   }
 }
 
+/** 复制角色：省去"新建一个和现有角色权限差不多"时从头一条条勾的麻烦 */
+async function handleCopy(row: SysRole) {
+  if (row.id === undefined) return
+
+  try {
+    await ElMessageBox.confirm(
+      `确定要复制角色「${row.roleName}」吗？\n新角色会带上它全部的菜单和按钮权限，但状态默认为「停用」。`,
+      '复制角色',
+      { type: 'info', confirmButtonText: '复制', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+
+  try {
+    const copied = await copyRole(row.id)
+    ElMessage.success(`已复制为「${copied.roleName}」，确认权限无误后记得启用`)
+    await loadList()
+  } catch {
+    // 同上
+  }
+}
+
 // ---------------- 分配权限 ----------------
 const menuDialogVisible = ref(false)
 const menuSubmitting = ref(false)
@@ -259,10 +283,11 @@ onMounted(loadList)
       <el-table-column label="创建时间" width="165">
         <template #default="{ row }">{{ formatTime(row.createTime) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="190" fixed="right">
+      <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
           <el-button link type="primary" @click="openAssignMenus(row)">分配权限</el-button>
+          <el-button link type="info" @click="handleCopy(row)">复制</el-button>
           <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
         </template>
       </el-table-column>
@@ -324,7 +349,7 @@ onMounted(loadList)
     </el-dialog>
 
     <!-- 分配权限 -->
-    <el-dialog v-model="menuDialogVisible" :title="menuDialogTitle" width="520px">
+    <el-dialog v-model="menuDialogVisible" :title="menuDialogTitle" width="560px">
       <el-tree
         ref="treeRef"
         :data="menuTree"
@@ -333,10 +358,29 @@ onMounted(loadList)
         default-expand-all
         :props="{ label: 'menuName', children: 'children' }"
         class="menu-tree"
-      />
+      >
+        <!-- 自定义节点：把"目录/菜单/按钮"和权限标识都显示出来。
+             不显示的话，树里一眼看过去分不清哪些是能看见的菜单、
+             哪些是只管接口权限的按钮。 -->
+        <template #default="{ data }">
+          <span class="tree-node">
+            <el-tag
+              size="small"
+              :type="MENU_TYPE_META[data.menuType]?.tag ?? 'info'"
+              disable-transitions
+            >
+              {{ MENU_TYPE_META[data.menuType]?.label ?? data.menuType }}
+            </el-tag>
+            <span class="node-name">{{ data.menuName }}</span>
+            <code v-if="data.perms" class="node-perm">{{ data.perms }}</code>
+          </span>
+        </template>
+      </el-tree>
+
       <p class="tip">
-        勾选子菜单时父级目录会自动变成半选状态，提交时会把两者一起保存，
-        这样侧边栏才能正确渲染出目录层级。
+        勾选子项时父级会自动变成半选，提交时会把两者一起保存，这样侧边栏才能正确渲染出目录层级。<br />
+        <b>按钮类节点</b>（比如「用户新增」）不对应界面，它控制的是后端接口能不能调用 ——
+        勾上之后该角色才能执行对应操作，没勾则会返回 403。
       </p>
 
       <template #footer>
@@ -372,9 +416,30 @@ onMounted(loadList)
 }
 
 .menu-tree {
-  max-height: 380px;
+  max-height: 420px;
   overflow-y: auto;
   padding: 8px 0;
+}
+
+.tree-node {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.node-name {
+  color: var(--text-h);
+}
+
+/* 权限标识用等宽字体，和代码里的写法一致，方便对照 */
+.node-perm {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--code-bg);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
 }
 
 .tip {

@@ -66,3 +66,47 @@ app:
     # token 有效期，单位分钟
     expire-minutes: ${JWT_EXPIRE_MINUTES:120}
     issuer: device-management-system
+
+  # ============================================================
+  # 本地 AI 助手（对接 Ollama）
+  #
+  # base-url 默认指向本机 11434。注意这个默认值只在
+  # 「后端跑在宿主机上」时有效（IDEA 里直接跑，或者 mvnw spring-boot:run）。
+  #
+  # 如果用根目录的 docker-compose.yml 把后端也放进了容器，
+  # 那么容器里的 localhost 指的是容器自己，连不到宿主机上的 Ollama ——
+  # docker-compose.yml 里已经把它覆盖成 http://host.docker.internal:11434。
+  # ============================================================
+  ai:
+    base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+    model: ${OLLAMA_MODEL:qwen2.5:3b}
+
+    # 系统提示词：让模型的角色定位和这个项目一致
+    system-prompt: >-
+      你是设备管理系统内置的助手。回答请简洁、分点、用中文。
+      涉及设备管理、状态流转（在线/离线/维修中/使用中）、借用归还、报修流程、
+      资产编号与保修期等问题时，可以结合这些业务概念来回答。
+      不确定的信息不要编造。
+
+    # 生成随机度：0 最确定，1 最随机。3B 小模型建议 0.5~0.8，太高会开始胡言乱语
+    temperature: ${OLLAMA_TEMPERATURE:0.7}
+
+    # 单次回复的最大 token 数。调大能说更长，但生成时间也线性变长
+    max-tokens: ${OLLAMA_MAX_TOKENS:1024}
+
+    # 连接 Ollama 的超时（秒）——只是建立 TCP 连接，很快
+    connect-timeout-seconds: 10
+
+    # 读超时（分钟）——这个是等模型生成的总时间。
+    # 3B 模型在 CPU 上生成 500 字左右可能要几十秒到一两分钟，
+    # 给得太短会在生成到一半时被掐断，表现为回复不完整。
+    read-timeout-minutes: ${OLLAMA_READ_TIMEOUT_MINUTES:5}
+
+    # 最多允许模型"查几次数据库"。
+    # 模型可能反复要求调工具（尤其小模型判断不准时），不设上限会陷入死循环、
+    # 每次都完整走一遍模型推理，非常慢。超过这个轮数就停止并给出提示。
+    max-tool-rounds: ${OLLAMA_MAX_TOOL_ROUNDS:3}
+
+    # 故障分析单次输出的最大 token 数。
+    # 分析结果只有严重程度 + 原因 + 步骤，不需要很长，给太大反而生成得慢。
+    analysis-max-tokens: ${OLLAMA_ANALYSIS_MAX_TOKENS:800}

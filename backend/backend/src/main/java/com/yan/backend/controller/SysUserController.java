@@ -1,7 +1,7 @@
 package com.yan.backend.controller;
 
 import com.yan.backend.annotation.Log;
-import com.yan.backend.annotation.RequireRole;
+import com.yan.backend.annotation.RequirePerm;
 import com.yan.backend.common.Result;
 import com.yan.backend.dto.AssignRolesRequest;
 import com.yan.backend.dto.PageResult;
@@ -27,16 +27,18 @@ import java.util.Map;
 /**
  * 用户管理。
  *
- * <p>写操作都标了 @Log，会被 LogAspect 拦截并异步记入 sys_oper_log；
- * 查询接口不记，免得日志表被 GET 请求刷爆。
+ * <p><b>权限控制方式</b>：类上标 {@code @RequirePerm("sys:user:list")} 作为默认，
+ * 覆盖所有读接口；写接口各自标更具体的权限标识。方法级注解优先于类级，
+ * 所以不用给每个读方法重复标注。
  *
- * <p>类上的 @RequireRole("admin") 由 JwtInterceptor 校验：非 admin 角色访问会拿到 403。
- * 这是接口层的真实保护，和前端侧边栏隐藏菜单不是一回事 —— 后者只是界面效果。
+ * <p>权限标识来自菜单表里 menuType='B' 的按钮记录，由管理员在
+ * 「角色管理 → 分配权限」里勾选分配。<b>不用改代码就能调整谁能做什么</b> ——
+ * 这是相比原先 {@code @RequireRole("admin")} 的关键区别。
  *
- * <p>注意它只保护了本 Controller。以后在 /api/system 下新增控制器时，
- * 要记得同样加上 @RequireRole，否则新接口默认是"登录即可访问"的。
+ * <p>注意：拥有 admin 角色的用户会绕过所有权限检查（见 JwtInterceptor），
+ * 所以验证细粒度权限要用 operator 这类非超管账号。
  */
-@RequireRole("admin")
+@RequirePerm("sys:user:list")
 @RestController
 @RequestMapping("/api/system/users")
 public class SysUserController {
@@ -70,6 +72,7 @@ public class SysUserController {
     }
 
     /** POST /api/system/users */
+    @RequirePerm("sys:user:add")
     @Log(title = "用户管理", businessType = "INSERT")
     @PostMapping
     public ResponseEntity<Result<SysUserVO>> create(@Valid @RequestBody SysUserSaveRequest request) {
@@ -78,6 +81,7 @@ public class SysUserController {
     }
 
     /** PUT /api/system/users/{id} */
+    @RequirePerm("sys:user:edit")
     @Log(title = "用户管理", businessType = "UPDATE")
     @PutMapping("/{id}")
     public ResponseEntity<Result<SysUserVO>> update(@PathVariable Long id,
@@ -86,6 +90,7 @@ public class SysUserController {
     }
 
     /** PUT /api/system/users/{id}/roles —— 分配角色 */
+    @RequirePerm("sys:user:assign")
     @Log(title = "用户管理", businessType = "UPDATE")
     @PutMapping("/{id}/roles")
     public ResponseEntity<Result<Void>> assignRoles(@PathVariable Long id,
@@ -95,6 +100,7 @@ public class SysUserController {
     }
 
     /** PUT /api/system/users/{id}/password —— 重置密码 */
+    @RequirePerm("sys:user:reset")
     @Log(title = "用户管理", businessType = "UPDATE")
     @PutMapping("/{id}/password")
     public ResponseEntity<Result<Void>> resetPassword(@PathVariable Long id,
@@ -104,6 +110,7 @@ public class SysUserController {
     }
 
     /** DELETE /api/system/users/{id} */
+    @RequirePerm("sys:user:remove")
     @Log(title = "用户管理", businessType = "DELETE")
     @DeleteMapping("/{id}")
     public ResponseEntity<Result<Void>> delete(@PathVariable Long id) {
