@@ -1,0 +1,169 @@
+package com.yan.backend.common;
+
+/**
+ * 系统参数的键名。
+ *
+ * <p>收成常量而不是散在各处写字符串，原因很实际：**同一个键会在三个地方出现** ——
+ * 代码里的读取点、种子数据里的默认行、页面上展示的名称。
+ * 任何一处拼错都**不会报错**，只会表现为"这个参数改了没反应"
+ * （因为代码读的键和库里存的键对不上，读不到就走默认值了）。
+ *
+ * <p>命名刻意和 application.yml 里的路径对齐，方便对照。
+ */
+public final class ConfigKeys {
+
+    private ConfigKeys() {
+    }
+
+    // ---------- 系统信息（展示类，登录页也要用） ----------
+
+    /** 系统名称。显示在登录页、侧边栏标题、浏览器标签页 */
+    public static final String SYSTEM_NAME = "system.name";
+    public static final String SYSTEM_NAME_DEFAULT = "设备管理系统";
+
+    /** 企业名称。显示在登录页底部 */
+    public static final String COMPANY_NAME = "system.company";
+    public static final String COMPANY_NAME_DEFAULT = "示例企业有限公司";
+
+    // ---------- 安全策略 ----------
+
+    /** 密码有效期（天）。<=0 表示关闭过期策略。对应 app.security.password-valid-days */
+    public static final String PASSWORD_VALID_DAYS = "security.password.valid-days";
+    public static final int PASSWORD_VALID_DAYS_DEFAULT = 90;
+
+    // ---------- 提醒阈值 ----------
+
+    /** 维保到期提前预警天数。对应 app.maintenance.warn-days */
+    public static final String MAINTENANCE_WARN_DAYS = "maintenance.warn-days";
+    public static final int MAINTENANCE_WARN_DAYS_DEFAULT = 30;
+
+    /** 保修到期提前预警天数。原来硬编码在看板里，现在也放出来可配 */
+    public static final String WARRANTY_WARN_DAYS = "warranty.warn-days";
+    public static final int WARRANTY_WARN_DAYS_DEFAULT = 90;
+
+    // ---------- 站内消息 ----------
+
+    /**
+     * 维保到期是否自动发站内消息。
+     *
+     * <p>做成开关是因为它的行为比较"吵"：每天会给每个到期计划的负责人各发一条。
+     * 有些团队觉得这种提醒有用，有些觉得是打扰（他们更愿意看维保页面顶部的告警条）。
+     */
+    public static final String MAINTENANCE_NOTIFY_ENABLED = "maintenance.notify.enabled";
+    public static final boolean MAINTENANCE_NOTIFY_ENABLED_DEFAULT = true;
+
+    /**
+     * 配件库存告急是否自动发站内消息。
+     *
+     * <p>和维保提醒那个开关是同一个理由：这类提醒"比较吵" ——
+     * 一件配件只要还在阈值以下，每天都发一条，直到补货为止。
+     * 有的团队靠它提醒补货，有的团队更愿意自己盯「配件耗材」页的告急清单。
+     */
+    public static final String STOCK_NOTIFY_ENABLED = "stock.notify.enabled";
+    public static final boolean STOCK_NOTIFY_ENABLED_DEFAULT = true;
+
+    /**
+     * 设备健康预警是否自动发站内消息。
+     *
+     * <p>⚠️ 这条提醒**只发给"能处理的人"**（拥有 dev:device:edit 的用户 + 管理员），
+     * 而不是广播给所有人 —— 设备健康是运维职责范围内的事，
+     * 发给不相关的人只会让消息中心变成一个没人看的红点。
+     *
+     * <p>和库存告警不同，健康预警**每天聚合成一条**：一台设备的健康分
+     * 会在低位停留好几个月，逐台发的话消息中心很快就被同一批设备刷屏了。
+     */
+    public static final String HEALTH_NOTIFY_ENABLED = "health.notify.enabled";
+    public static final boolean HEALTH_NOTIFY_ENABLED_DEFAULT = true;
+
+    // ---------- 首页 AI 摘要 ----------
+
+    /**
+     * 首页是否显示 AI 摘要卡片。
+     *
+     * <p>做成开关而不是写死，有两个实际理由：
+     * <ul>
+     *   <li>摘要是**每天定时调一次模型**生成的。本机小模型跑一次要几十秒，
+     *       有人会觉得这份开销不值得（尤其是不想为了首页一句话一直开着 Ollama）；</li>
+     *   <li>它和维保提醒一样属于"比较吵"的功能 —— 关掉之后首页其余部分完全不受影响。</li>
+     * </ul>
+     *
+     * <p>关闭后的表现是摘要卡片整块不出现，而不是显示一个空框。
+     */
+    public static final String DASHBOARD_DIGEST_ENABLED = "dashboard.digest.enabled";
+    public static final boolean DASHBOARD_DIGEST_ENABLED_DEFAULT = true;
+
+    // ---------- 附件 ----------
+
+    /**
+     * 单个附件的大小上限（MB）。对应 app.file.max-size-mb
+     *
+     * <p>注意**扩展名白名单没有做成可配的**：那是安全边界
+     * （放进 svg / html 就等于开了存储型 XSS 的口子），
+     * 不该让界面上的一个输入框能改掉。要调整得改 yml 并重新部署。
+     */
+    public static final String UPLOAD_MAX_SIZE_MB = "file.upload.max-size-mb";
+    public static final int UPLOAD_MAX_SIZE_MB_DEFAULT = 10;
+
+    // ---------- AI 模型 ----------
+    //
+    // ⚠️ 这里**只放非敏感项**。提供方的 API Key 一律走环境变量 / yml，
+    // 不进数据库、不出现在任何接口响应里 —— 理由见 AiSettingsService 的类注释。
+    //
+    // 这几项的值都是"覆盖值"：库里没有（或那一行被删掉）时，
+    // 代码会退回 yml 里 app.ai.chat.* / app.ai.embedding.* 的值。
+
+    /**
+     * 对话提供方：ollama（本机）/ openai（任意 OpenAI 兼容服务）。
+     *
+     * <p>⚠️ 种子默认值是**空串**，表示"不覆盖，跟随配置文件/环境变量"。
+     * 这几项都遵循同一条规则：**库里为空就用 yml 的值，填了才覆盖**。
+     *
+     * <p>为什么不种成具体值：种成 {@code ollama} 的话，Docker 里注入的
+     * {@code AI_CHAT_PROVIDER=openai} 会被库里的值盖掉 ——
+     * 而管理员在界面上完全看不出"为什么改了环境变量不生效"。
+     * 界面上把实际生效的值放在占位提示里显示，不会让人以为是没配。
+     */
+    public static final String AI_CHAT_PROVIDER = "ai.chat.provider";
+    public static final String AI_CHAT_PROVIDER_DEFAULT = "";
+
+    /**
+     * 对话服务地址。对应 app.ai.chat.base-url
+     *
+     * <p>默认值刻意留空：留空表示"用 yml / 环境变量里的那个"。
+     * 这里如果写死成 {@code http://localhost:11434}，Docker 里注入的
+     * {@code AI_CHAT_BASE_URL=host.docker.internal:11434} 就会被库里的值盖掉，
+     * 而管理员在界面上完全看不出为什么改环境变量不生效。
+     */
+    public static final String AI_CHAT_BASE_URL = "ai.chat.base-url";
+    public static final String AI_CHAT_BASE_URL_DEFAULT = "";
+
+    /** 对话模型名。对应 app.ai.chat.model。留空表示跟随配置文件 */
+    public static final String AI_CHAT_MODEL = "ai.chat.model";
+    public static final String AI_CHAT_MODEL_DEFAULT = "";
+
+    /** 对话随机度。对应 app.ai.chat.temperature */
+    public static final String AI_CHAT_TEMPERATURE = "ai.chat.temperature";
+    public static final String AI_CHAT_TEMPERATURE_DEFAULT = "0.7";
+
+    /** 嵌入提供方。对应 app.ai.embedding.provider。留空表示跟随配置文件 */
+    public static final String AI_EMBEDDING_PROVIDER = "ai.embedding.provider";
+    public static final String AI_EMBEDDING_PROVIDER_DEFAULT = "";
+
+    /** 嵌入服务地址。对应 app.ai.embedding.base-url。留空表示用 yml 的 */
+    public static final String AI_EMBEDDING_BASE_URL = "ai.embedding.base-url";
+    public static final String AI_EMBEDDING_BASE_URL_DEFAULT = "";
+
+    /** 嵌入模型名。对应 app.ai.embedding.model。留空表示跟随配置文件 */
+    public static final String AI_EMBEDDING_MODEL = "ai.embedding.model";
+    public static final String AI_EMBEDDING_MODEL_DEFAULT = "";
+
+    /**
+     * 允许匿名读取的参数白名单。
+     *
+     * <p>登录页要用系统名称和企业名称，而那时用户还没登录、拿不到 token。
+     * 所以这几个键单独开一个免登录接口。**只放展示类的键**，
+     * 安全策略、阈值、AI 配置这类一律不放 —— 它们会暴露系统的内部配置。
+     */
+    public static final java.util.List<String> PUBLIC_KEYS = java.util.List.of(
+            SYSTEM_NAME, COMPANY_NAME);
+}

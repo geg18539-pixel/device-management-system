@@ -113,6 +113,20 @@
             <version>5.5.1</version>
         </dependency>
 
+        <!--
+          PDFBox：知识库要解析 PDF（设备说明书、厂商文档）里的文字。
+          和 POI 一样是 Apache 的库，同样**不在 Boot 的 BOM 里**，要自己写版本。
+
+          只引 pdfbox 一个坐标，pdfbox-io 和 fontbox 会作为传递依赖带进来。
+          ⚠️ 3.x 的 API 和 2.x 不兼容：加载文档从 PDDocument.load() 改成了
+          Loader.loadPDF()，网上大量 2.x 的示例直接抄会编译不过。
+        -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>3.0.8</version>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-devtools</artifactId>

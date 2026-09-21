@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { getLoginLogPage, type SysLoginLog } from '../api/loginLog'
+import DataPanel from '../components/DataPanel.vue'
+import EmptyState from '../components/EmptyState.vue'
+import PageHeader from '../components/PageHeader.vue'
+import StatusPlate from '../components/StatusPlate.vue'
 
 const loading = ref(false)
 const logList = ref<SysLoginLog[]>([])
@@ -73,8 +77,14 @@ onMounted(loadList)
 
 <template>
   <div class="page">
-    <div class="toolbar">
-      <div class="filters">
+    <PageHeader
+      title="登录日志"
+      desc="记录每次登录的结果和来源；登录失败的原因也在这里，是排查撞库的主要依据"
+    />
+
+    <DataPanel flush>
+      <div class="filter-bar">
+        <div class="filters">
         <el-input
           v-model="query.username"
           placeholder="按用户名搜索"
@@ -107,10 +117,10 @@ onMounted(loadList)
         <el-button type="primary" @click="handleSearch">搜索</el-button>
         <el-button @click="handleReset">重置</el-button>
         <el-button type="warning" plain @click="showFailuresOnly">只看失败</el-button>
+        </div>
       </div>
-    </div>
 
-    <el-table v-loading="loading" :data="logList" border stripe height="520">
+      <el-table v-loading="loading" :data="logList" height="520">
       <el-table-column label="登录时间" width="170">
         <template #default="{ row }">{{ formatTime(row.loginTime) }}</template>
       </el-table-column>
@@ -119,9 +129,9 @@ onMounted(loadList)
 
       <el-table-column label="结果" width="100">
         <template #default="{ row }">
-          <el-tag :type="row.success ? 'success' : 'danger'" disable-transitions>
+          <StatusPlate :tone="row.success ? 'ok' : 'crit'">
             {{ row.success ? '成功' : '失败' }}
-          </el-tag>
+          </StatusPlate>
         </template>
       </el-table-column>
 
@@ -153,20 +163,22 @@ onMounted(loadList)
       </el-table-column>
 
       <template #empty>
-        <el-empty description="暂无登录记录" />
+        <EmptyState title="没有符合条件的登录记录" desc="换个筛选条件试试；「只看失败」能快速筛出异常登录" />
       </template>
-    </el-table>
+      </el-table>
 
-    <el-pagination
-      v-model:current-page="query.pageNum"
-      v-model:page-size="query.pageSize"
-      :total="total"
-      :page-sizes="[20, 50, 100]"
-      layout="total, sizes, prev, pager, next"
-      class="pagination"
-      @size-change="handleSearch"
-      @current-change="loadList"
-    />
+      <div class="table-pager">
+        <el-pagination
+          v-model:current-page="query.pageNum"
+          v-model:page-size="query.pageSize"
+          :total="total"
+          :page-sizes="[20, 50, 100]"
+          layout="total, sizes, prev, pager, next"
+          @size-change="handleSearch"
+          @current-change="loadList"
+        />
+      </div>
+    </DataPanel>
 
     <p class="footnote">
       日志只读，不提供修改和删除 —— 审计记录如果可以被人改动，就没有作为依据的价值了。
@@ -180,11 +192,9 @@ onMounted(loadList)
   text-align: left;
 }
 
-.toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
+.filter-bar {
+  padding: var(--sp-4);
+  border-bottom: 1px solid var(--line-soft);
 }
 
 .filters {
@@ -194,19 +204,22 @@ onMounted(loadList)
   gap: 10px;
 }
 
-.pagination {
-  margin-top: 16px;
+/* 分页在面板底部 */
+.table-pager {
+  display: flex;
   justify-content: flex-end;
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--line-soft);
 }
 
 .muted {
-  color: #cbd5e1;
+  color: var(--ink-3);
 }
 
 .footnote {
   margin-top: 14px;
   font-size: 12px;
   line-height: 1.7;
-  color: #94a3b8;
+  color: var(--ink-3);
 }
 </style>

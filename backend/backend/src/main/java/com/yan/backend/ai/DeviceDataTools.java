@@ -112,17 +112,21 @@ public class DeviceDataTools {
                     .append("\n");
         }
 
-        // 未完工的维修工单
+        // 未完工的维修工单。
+        // 排除两个终态（已完成 + 已关闭）而不是只排除"已完成"——
+        // 否则已关闭的工单会被当成"还在处理中"，快照里的待办数量虚高
         List<DeviceRepair> unfinished = deviceRepairRepository
-                .findByRepairStatusNotOrderByReportTimeDesc(
-                        DeviceRepair.STATUS_FINISHED, PageRequest.of(0, MAX_ROWS))
+                .findByRepairStatusNotInOrderByReportTimeDesc(
+                        List.of(DeviceRepair.STATUS_FINISHED, DeviceRepair.STATUS_CLOSED),
+                        PageRequest.of(0, MAX_ROWS))
                 .getContent();
         if (unfinished.isEmpty()) {
             sb.append("- 未完工的维修工单：无\n");
         } else {
             sb.append("- 未完工的维修工单：")
                     .append(String.join("；", unfinished.stream()
-                            .map(r -> r.getDeviceName() + "（" + r.getRepairStatus()
+                            .map(r -> r.getDeviceName() + "（"
+                                    + DeviceRepair.normalizeStatus(r.getRepairStatus())
                                     + "：" + r.getFaultDesc() + "）")
                             .toList()))
                     .append("\n");
@@ -165,7 +169,8 @@ public class DeviceDataTools {
                                 "type", "string",
                                 "description", "工单状态，不传表示查询全部",
                                 "enum", List.of(DeviceRepair.STATUS_PENDING,
-                                        DeviceRepair.STATUS_REPAIRING, DeviceRepair.STATUS_FINISHED))),
+                                        DeviceRepair.STATUS_REPAIRING, DeviceRepair.STATUS_FINISHED,
+                                        DeviceRepair.STATUS_CLOSED))),
                         List.of())
         );
     }
@@ -243,11 +248,17 @@ public class DeviceDataTools {
     }
 
     private String listRepairs(String status) {
+        // 用 expandStatusFilter 而不是拿 status 直接等值查：
+        // 历史工单存的是旧值「待维修」，模型按提示词传「待受理」时会全部查不到。
+        // 模型看到"没有符合条件的工单"会如实回答用户，于是用户以为数据不存在 ——
+        // 这种"管道通但结果是错的"最难发现
         List<DeviceRepair> repairs = (status == null || status.isBlank())
                 ? deviceRepairRepository
                         .findAllByOrderByReportTimeDesc(PageRequest.of(0, MAX_ROWS)).getContent()
                 : deviceRepairRepository
-                        .findByRepairStatusOrderByReportTimeDesc(status.trim(), PageRequest.of(0, MAX_ROWS))
+                        .findByRepairStatusInOrderByReportTimeDesc(
+                                DeviceRepair.expandStatusFilter(status.trim()),
+                                PageRequest.of(0, MAX_ROWS))
                         .getContent();
 
         if (repairs.isEmpty()) {
@@ -258,12 +269,16 @@ public class DeviceDataTools {
         for (DeviceRepair r : repairs) {
             sb.append("- 工单#").append(r.getId())
                     .append(" ").append(r.getDeviceName())
-                    .append("｜状态：").append(r.getRepairStatus())
+                    // 展示时把旧值归一，避免同一份回答里出现两种状态说法
+                    .append("｜状态：").append(DeviceRepair.normalizeStatus(r.getRepairStatus()))
                     .append("｜故障：").append(r.getFaultDesc());
             appendIfPresent(sb, "报修人", r.getReporter());
             appendIfPresent(sb, "维修人", r.getRepairer());
             if (r.getCost() != null) {
                 sb.append("｜费用：").append(r.getCost());
+            }
+            if (r.getRepairResult() != null && !r.getRepairResult().isBlank()) {
+                appendIfPresent(sb, "维修结果", r.getRepairResult());
             }
             sb.append("\n");
         }

@@ -1,5 +1,8 @@
 package com.yan.backend.common;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -79,5 +82,75 @@ public final class PasswordPolicy {
         return "长度 " + MIN_LENGTH + "-" + MAX_LENGTH
                 + " 位，且至少包含小写字母、大写字母、数字、特殊符号中的 "
                 + REQUIRED_CATEGORIES + " 类";
+    }
+
+    // ============================================================
+    // 密码有效期
+    // ============================================================
+
+    /**
+     * 密码还有多少天到期。负数表示已经过期。
+     *
+     * <p>两种情况返回 {@code null}（表示"不适用、不提醒"）：
+     * <ul>
+     *   <li>{@code validDays <= 0} —— 配置里关闭了过期策略</li>
+     *   <li>{@code pwdUpdateTime} 为 null —— 加这个字段之前建的账号没有改密记录。
+     *       **这种情况必须当作"还没到期"**，否则升级完所有老用户一登录就被判定过期，
+     *       直接进不去系统，而且他们没有改密入口之外的地方可去。</li>
+     * </ul>
+     *
+     * <p>按**日期**而不是精确到秒算：用户看到的是"还有 3 天"，
+     * 用秒算的话同一天里这个数字会跳来跳去（今天下午看是 3、明早看还是 3，
+     * 但中间的某个时刻会变成 2），看起来像在倒计时，很烦。
+     */
+    public static Long daysUntilExpire(LocalDateTime pwdUpdateTime, int validDays) {
+        if (validDays <= 0 || pwdUpdateTime == null) {
+            return null;
+        }
+        LocalDate deadline = pwdUpdateTime.toLocalDate().plusDays(validDays);
+        return ChronoUnit.DAYS.between(LocalDate.now(), deadline);
+    }
+
+    /** 密码是否已过期。没有改密记录的账号一律算没过期，理由见上 */
+    public static boolean isExpired(LocalDateTime pwdUpdateTime, int validDays) {
+        Long days = daysUntilExpire(pwdUpdateTime, validDays);
+        return days != null && days <= 0;
+    }
+
+    // ============================================================
+    // 初始默认密码
+    // ============================================================
+
+    /**
+     * 项目文档里公开的初始密码。
+     *
+     * <p>这几个账号的密码写在种子数据和 README 里，属于"公开的秘密"，
+     * 所以仍在使用它们的账号必须被强制改密 —— 等保对"默认口令"有明确要求。
+     *
+     * <p>这不是新增泄露面：seedRbacData 本来就用这些值创建账号，
+     * 信息已经在代码里了。
+     */
+    public static final java.util.Map<String, String> KNOWN_DEFAULT_PASSWORDS =
+            java.util.Map.of(
+                    "admin", "admin123",
+                    "operator", "operator123");
+
+    /**
+     * 判断一次登录用的密码是不是该账号的公开初始密码。
+     *
+     * <p>登录接口用它做**即时判断**：只要还在用初始密码，这次登录就直接
+     * 判定为"需要改密"。
+     *
+     * <p>为什么不只依赖启动时的那次数据修补？因为 Tomcat 在种子数据跑完之前
+     * 就开始监听端口了，极短时间内登录的用户会穿过那个窗口，
+     * 拿到一个"不需要改密"的 token，然后用默认密码正常使用两个小时。
+     * 在登录路径上再判断一次，这个窗口就彻底没有了，而且不额外增加开销
+     * （这里比的是明文，不需要再做一次 BCrypt）。
+     */
+    public static boolean isKnownDefaultPassword(String username, String rawPassword) {
+        if (username == null || rawPassword == null) {
+            return false;
+        }
+        return rawPassword.equals(KNOWN_DEFAULT_PASSWORDS.get(username));
     }
 }

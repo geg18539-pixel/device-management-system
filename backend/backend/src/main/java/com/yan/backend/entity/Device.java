@@ -35,6 +35,17 @@ public class Device {
     public static final String STATUS_REPAIRING = "维修中";
     public static final String STATUS_IN_USE = "使用中";
 
+    // ---------- 资产生命周期状态常量 ----------
+    // ★ 和上面的 status 是**两个不同维度**，不要混用：
+    //   status          反映"连通性" —— 设备当前能不能通信（在线/离线/使用中/维修中）
+    //   lifecycleStatus 反映"资产状态" —— 这台设备在账上处于生命周期的哪个阶段
+    // 一台设备可以「在线且已报废」（信号还在，但资产上要淘汰），
+    // 也可以「离线但正常」（只是网断了）。所以必须是两个字段。
+    public static final String LIFECYCLE_NORMAL = "正常";
+    public static final String LIFECYCLE_REPAIR = "维修";
+    public static final String LIFECYCLE_SCRAPPED = "报废";
+    public static final String LIFECYCLE_DISABLED = "停用";
+
     /** 主键，交给数据库自增 */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -78,11 +89,41 @@ public class Device {
     @Column(name = "serial_number", length = 100, unique = true)
     private String serialNumber;
 
-    /** 设备状态：在线 / 离线 / 维修中 / 使用中 */
+    /** 设备状态：在线 / 离线 / 维修中 / 使用中 —— 反映连通性，不是资产状态 */
     @NotBlank(message = "设备状态不能为空")
     @Size(max = 20, message = "设备状态不能超过 20 个字符")
     @Column(name = "status", nullable = false, length = 20)
     private String status;
+
+    /**
+     * 资产生命周期状态：正常 / 维修 / 报废 / 停用。
+     *
+     * <p>允许为空：这张表在加这个字段之前就有数据了。历史数据为 null 时，
+     * 服务层和前端按「正常」处理（见 {@link #LIFECYCLE_NORMAL}）。
+     */
+    @Size(max = 20, message = "生命周期状态不能超过 20 个字符")
+    @Column(name = "lifecycle_status", length = 20)
+    private String lifecycleStatus = LIFECYCLE_NORMAL;
+
+    /**
+     * 所属部门 id，指向 sys_dept。null 表示未分配。
+     *
+     * <p>和 categoryId 一样存裸 id 而不是 @ManyToOne 关联：
+     * 项目开了 open-in-view=false，用关联对象容易在序列化时踩懒加载异常
+     * （SysRole.menus 上已经踩过一次），裸 id 也没有 N+1 问题。
+     */
+    @Column(name = "dept_id")
+    private Long deptId;
+
+    /** 型号，如 SHT-2000 */
+    @Size(max = 100, message = "型号不能超过 100 个字符")
+    @Column(name = "model", length = 100)
+    private String model;
+
+    /** 生产厂商 */
+    @Size(max = 100, message = "厂商不能超过 100 个字符")
+    @Column(name = "manufacturer", length = 100)
+    private String manufacturer;
 
     /** 所在位置 */
     @Size(max = 100, message = "位置不能超过 100 个字符")
@@ -110,6 +151,24 @@ public class Device {
     /** 借出时间。归还时和 borrower 一起清空 */
     @Column(name = "borrow_time")
     private LocalDateTime borrowTime;
+
+    // ---------- 报废信息 ----------
+    // 一台设备只会报废一次，所以这几个字段直接放在设备上，
+    // 不像调拨那样需要单独一张历史表。
+
+    /** 报废日期。空表示未报废 */
+    @Column(name = "scrap_date")
+    private LocalDate scrapDate;
+
+    /** 报废原因 */
+    @Size(max = 200, message = "报废原因不能超过 200 个字符")
+    @Column(name = "scrap_reason", length = 200)
+    private String scrapReason;
+
+    /** 报废操作人 */
+    @Size(max = 50, message = "操作人不能超过 50 个字符")
+    @Column(name = "scrap_operator", length = 50)
+    private String scrapOperator;
 
     @CreationTimestamp
     @Column(name = "create_time", nullable = false, updatable = false)
@@ -177,6 +236,38 @@ public class Device {
         this.status = status;
     }
 
+    public String getLifecycleStatus() {
+        return lifecycleStatus;
+    }
+
+    public void setLifecycleStatus(String lifecycleStatus) {
+        this.lifecycleStatus = lifecycleStatus;
+    }
+
+    public Long getDeptId() {
+        return deptId;
+    }
+
+    public void setDeptId(Long deptId) {
+        this.deptId = deptId;
+    }
+
+    public String getModel() {
+        return model;
+    }
+
+    public void setModel(String model) {
+        this.model = model;
+    }
+
+    public String getManufacturer() {
+        return manufacturer;
+    }
+
+    public void setManufacturer(String manufacturer) {
+        this.manufacturer = manufacturer;
+    }
+
     public String getLocation() {
         return location;
     }
@@ -223,6 +314,30 @@ public class Device {
 
     public void setBorrowTime(LocalDateTime borrowTime) {
         this.borrowTime = borrowTime;
+    }
+
+    public LocalDate getScrapDate() {
+        return scrapDate;
+    }
+
+    public void setScrapDate(LocalDate scrapDate) {
+        this.scrapDate = scrapDate;
+    }
+
+    public String getScrapReason() {
+        return scrapReason;
+    }
+
+    public void setScrapReason(String scrapReason) {
+        this.scrapReason = scrapReason;
+    }
+
+    public String getScrapOperator() {
+        return scrapOperator;
+    }
+
+    public void setScrapOperator(String scrapOperator) {
+        this.scrapOperator = scrapOperator;
     }
 
     public LocalDateTime getCreateTime() {

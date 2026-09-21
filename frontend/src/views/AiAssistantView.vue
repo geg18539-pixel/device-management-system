@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getAiModels, streamChat, type AiChatMessage } from '../api/ai'
+import { getAiModels, getAiStatus, streamChat, type AiChatMessage } from '../api/ai'
+import EmptyState from '../components/EmptyState.vue'
+import PageHeader from '../components/PageHeader.vue'
+import StatusPlate from '../components/StatusPlate.vue'
 
 interface ChatItem {
   role: 'user' | 'assistant'
@@ -18,11 +21,24 @@ const input = ref('')
 const sending = ref(false)
 const scrollRef = ref<HTMLDivElement>()
 
-// ---------------- Ollama 连通性 ----------------
+// ---------------- 服务连通性 ----------------
 const models = ref<string[]>([])
 const selectedModel = ref('')
-const ollamaReady = ref(false)
+/** 连上了没有。名字不叫 aiReady —— 现在也可能是云端的 OpenAI 兼容服务 */
+const aiReady = ref(false)
 const checking = ref(true)
+/** 当前用的是哪一家。显示出来，否则用户不知道是谁在回答 */
+const providerLabel = ref('')
+
+/** 拉当前生效的提供方名字。失败不影响使用，只是标题里少一行字 */
+async function loadProvider() {
+  try {
+    const status = await getAiStatus()
+    providerLabel.value = status.chat.providerLabel
+  } catch {
+    providerLabel.value = ''
+  }
+}
 
 async function loadModels() {
   checking.value = true
@@ -30,18 +46,20 @@ async function loadModels() {
     const data = await getAiModels()
     models.value = data.models
     selectedModel.value = data.defaultModel
-    ollamaReady.value = true
+    aiReady.value = true
 
-    // 配置的默认模型在本地不存在时给个提示 —— 否则用户发消息才发现跑不通
+    // 配置的默认模型在对方的模型列表里不存在时给个提示 ——
+    // 否则用户要发一条消息才发现跑不通
     if (data.defaultModel && !data.models.includes(data.defaultModel)) {
       ElMessage.warning(
-        `配置的默认模型「${data.defaultModel}」在本地未安装，请选择其它模型或执行 ollama pull ${data.defaultModel}`,
+        `配置的默认模型「${data.defaultModel}」不在可用列表里，请换一个，`
+        + `或到「系统设置 → AI 模型」核对模型名`,
       )
     }
   } catch {
-    // 拿不到模型列表通常就意味着 Ollama 没启动，
+    // 拿不到模型列表通常意味着服务连不上（或密钥不对），
     // request.ts 的拦截器已经把具体原因弹出来了，这里只切到未连接状态
-    ollamaReady.value = false
+    aiReady.value = false
   } finally {
     checking.value = false
   }
@@ -138,30 +156,34 @@ const sampleQuestions = [
   '温度传感器 A 保修到什么时候？',
 ]
 
-onMounted(loadModels)
+onMounted(() => {
+  void loadModels()
+  void loadProvider()
+})
 </script>
 
 <template>
   <div class="ai-page">
+    <PageHeader
+      title="AI 助手"
+      :desc="`当前提供方：${providerLabel || '读取中…'}；可以问设备数据，对话历史只存在这个浏览器里`"
+    />
+
     <!-- 顶部工具栏 -->
     <div class="toolbar">
       <div class="left">
         <span class="label">模型</span>
         <el-select
           v-model="selectedModel"
-          :disabled="!ollamaReady || sending"
+          :disabled="!aiReady || sending"
           placeholder="未连接"
           style="width: 190px"
           size="small"
         >
           <el-option v-for="m in models" :key="m" :label="m" :value="m" />
         </el-select>
-        <el-tag v-if="ollamaReady" type="success" size="small" disable-transitions>
-          已连接 Ollama
-        </el-tag>
-        <el-tag v-else-if="!checking" type="danger" size="small" disable-transitions>
-          未连接
-        </el-tag>
+        <StatusPlate v-if="aiReady" tone="ok">已连接 {{ providerLabel || '模型服务' }}</StatusPlate>
+        <StatusPlate v-else-if="!checking" tone="crit">未连接</StatusPlate>
       </div>
 
       <div class="right">
@@ -172,7 +194,7 @@ onMounted(loadModels)
 
     <!-- 未连接时的提示 -->
     <el-alert
-      v-if="!checking && !ollamaReady"
+      v-if="!checking && !aiReady"
       type="error"
       :closable="false"
       show-icon
@@ -191,9 +213,10 @@ onMounted(loadModels)
 
     <!-- 消息区 -->
     <div ref="scrollRef" class="messages">
-      <el-empty
+      <EmptyState
         v-if="messages.length === 0"
-        description="可以直接问设备数据，比如："
+        title="还没有对话"
+        desc="可以直接问设备数据。点下面任意一个问题试试，或者自己输入。"
       >
         <div class="samples">
           <el-button
@@ -205,7 +228,7 @@ onMounted(loadModels)
             {{ q }}
           </el-button>
         </div>
-      </el-empty>
+      </EmptyState>
 
       <div
         v-for="(item, index) in messages"
@@ -247,10 +270,14 @@ onMounted(loadModels)
 </template>
 
 <style scoped>
+/* 聊天页要占满可视高度：顶栏 56 + 内容区上下内边距 40 + 页头约 45。
+   这个数字和上面几项是配套的，改外壳高度时要一起调。
+   更稳的做法是让 .content 变成 flex 容器、这里用 flex:1，
+   但 .content 是所有页面共用的，为一个页面改它有回归风险，先维持现状 */
 .ai-page {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 140px);
+  height: calc(100vh - 145px);
   text-align: left;
 }
 
@@ -271,7 +298,7 @@ onMounted(loadModels)
 
 .label {
   font-size: 13px;
-  color: #64748b;
+  color: var(--ink-2);
 }
 
 .alert {
@@ -288,9 +315,9 @@ onMounted(loadModels)
   flex: 1;
   overflow-y: auto;
   padding: 16px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+  background: var(--surface);
 }
 
 .row {
@@ -305,7 +332,7 @@ onMounted(loadModels)
 .bubble {
   max-width: 76%;
   padding: 10px 14px;
-  border-radius: 10px;
+  border-radius: var(--r-panel);
   font-size: 14px;
   line-height: 1.75;
   white-space: pre-wrap;
@@ -313,18 +340,18 @@ onMounted(loadModels)
 }
 
 .row.user .bubble {
-  background: #1677ff;
-  color: #fff;
+  background: var(--signal);
+  color: var(--on-signal);
 }
 
 .row.assistant .bubble {
-  background: #f4f6f8;
-  color: var(--text-h);
+  background: var(--canvas);
+  color: var(--ink-1);
 }
 
 .bubble.error {
-  background: #fef2f2;
-  color: #b91c1c;
+  background: var(--crit-weak);
+  color: var(--crit);
 }
 
 /* 生成中的光标 */
@@ -353,9 +380,9 @@ onMounted(loadModels)
 
 code {
   padding: 1px 5px;
-  border-radius: 4px;
-  background: var(--code-bg);
-  font-family: var(--mono);
+  border-radius: var(--r-control);
+  background: var(--sunken);
+  font-family: var(--font-mono);
 }
 
 .samples {

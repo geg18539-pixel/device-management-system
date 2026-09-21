@@ -5,7 +5,6 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.CreationTimestamp;
 
@@ -62,8 +61,8 @@ public class SysOperLog {
     private String status;
 
     /** 失败时的异常信息，成功时为 null */
-    @Lob
-    @Column(name = "error_msg")
+    // ⚠️ 不能用 @Lob：MySQL 上会生成 tinytext/tinyblob（255 字节），详见 entity/package-info.java
+    @Column(name = "error_msg", columnDefinition = "TEXT")
     private String errorMsg;
 
     /** 耗时（毫秒） */

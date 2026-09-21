@@ -18,6 +18,13 @@ import {
   type SysRole,
 } from '../api/role'
 import { MENU_TYPE_META, getMenuTree, type SysMenuTree } from '../api/menu'
+import DataPanel from '../components/DataPanel.vue'
+import EmptyState from '../components/EmptyState.vue'
+import PageHeader from '../components/PageHeader.vue'
+import StatusPlate from '../components/StatusPlate.vue'
+import { usePerm } from '../composables/usePerm'
+
+const { hasPerm } = usePerm()
 
 // ---------------- 列表 ----------------
 const loading = ref(false)
@@ -251,62 +258,76 @@ onMounted(loadList)
 
 <template>
   <div class="page">
-    <div class="toolbar">
-      <div class="filters">
-        <el-input
-          v-model="query.roleName"
-          placeholder="按角色名称搜索"
-          clearable
-          style="width: 200px"
-          @keyup.enter="handleSearch"
-          @clear="handleSearch"
-        />
-        <el-button type="primary" @click="handleSearch">搜索</el-button>
-        <el-button @click="handleReset">重置</el-button>
-      </div>
-      <el-button type="primary" @click="openCreate">新增角色</el-button>
-    </div>
-
-    <el-table v-loading="loading" :data="roleList" border stripe>
-      <el-table-column prop="id" label="ID" width="70" />
-      <el-table-column prop="roleName" label="角色名称" min-width="140" />
-      <el-table-column prop="roleKey" label="角色标识" min-width="130" />
-      <el-table-column prop="sortOrder" label="排序" width="80" />
-      <el-table-column label="状态" width="85">
-        <template #default="{ row }">
-          <el-tag :type="row.status === '正常' ? 'success' : 'info'" disable-transitions>
-            {{ row.status }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="remark" label="备注" min-width="160" show-overflow-tooltip />
-      <el-table-column label="创建时间" width="165">
-        <template #default="{ row }">{{ formatTime(row.createTime) }}</template>
-      </el-table-column>
-      <el-table-column label="操作" width="220" fixed="right">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button link type="primary" @click="openAssignMenus(row)">分配权限</el-button>
-          <el-button link type="info" @click="handleCopy(row)">复制</el-button>
-          <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
-        </template>
-      </el-table-column>
-
-      <template #empty>
-        <el-empty description="暂无角色数据" />
+    <PageHeader
+      title="角色管理"
+      desc="角色决定能看哪些菜单、能点哪些按钮；「分配权限」里勾选的是菜单树的节点"
+    >
+      <template #actions>
+        <el-button v-if="hasPerm('sys:role:add')" type="primary" @click="openCreate">
+          新增角色
+        </el-button>
       </template>
-    </el-table>
+    </PageHeader>
 
-    <el-pagination
-      v-model:current-page="query.pageNum"
-      v-model:page-size="query.pageSize"
-      :total="total"
-      :page-sizes="[10, 20, 50]"
-      layout="total, sizes, prev, pager, next"
-      class="pagination"
-      @size-change="handleSearch"
-      @current-change="loadList"
-    />
+    <DataPanel flush>
+      <div class="filter-bar">
+        <div class="filters">
+          <el-input
+            v-model="query.roleName"
+            placeholder="按角色名称搜索"
+            clearable
+            style="width: 200px"
+            @keyup.enter="handleSearch"
+            @clear="handleSearch"
+          />
+          <el-button type="primary" @click="handleSearch">搜索</el-button>
+          <el-button @click="handleReset">重置</el-button>
+        </div>
+      </div>
+
+      <el-table v-loading="loading" :data="roleList">
+        <el-table-column prop="id" label="ID" width="70" />
+        <el-table-column prop="roleName" label="角色名称" min-width="140" />
+        <el-table-column prop="roleKey" label="角色标识" min-width="130" />
+        <el-table-column prop="sortOrder" label="排序" width="80" />
+        <el-table-column label="状态" width="85">
+          <template #default="{ row }">
+            <StatusPlate :tone="row.status === '正常' ? 'ok' : 'idle'" :dot="false">
+              {{ row.status }}
+            </StatusPlate>
+          </template>
+        </el-table-column>
+        <el-table-column prop="remark" label="备注" min-width="160" show-overflow-tooltip />
+        <el-table-column label="创建时间" width="165">
+          <template #default="{ row }">{{ formatTime(row.createTime) }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="220" fixed="right">
+          <template #default="{ row }">
+            <el-button v-if="hasPerm('sys:role:edit')" link type="primary" @click="openEdit(row)">编辑</el-button>
+            <el-button v-if="hasPerm('sys:role:assign')" link type="primary" @click="openAssignMenus(row)">分配权限</el-button>
+            <!-- 复制也是一种"新增"，用新增权限 -->
+            <el-button v-if="hasPerm('sys:role:add')" link type="info" @click="handleCopy(row)">复制</el-button>
+            <el-button v-if="hasPerm('sys:role:remove')" link type="danger" @click="handleDelete(row)">删除</el-button>
+          </template>
+        </el-table-column>
+
+        <template #empty>
+          <EmptyState title="还没有角色" desc="建一个角色，再去「分配权限」里勾选它能用的菜单" />
+        </template>
+      </el-table>
+
+      <div class="table-pager">
+        <el-pagination
+          v-model:current-page="query.pageNum"
+          v-model:page-size="query.pageSize"
+          :total="total"
+          :page-sizes="[10, 20, 50]"
+          layout="total, sizes, prev, pager, next"
+          @size-change="handleSearch"
+          @current-change="loadList"
+        />
+      </div>
+    </DataPanel>
 
     <!-- 新增 / 编辑 -->
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="500px">
@@ -364,13 +385,12 @@ onMounted(loadList)
              哪些是只管接口权限的按钮。 -->
         <template #default="{ data }">
           <span class="tree-node">
-            <el-tag
-              size="small"
-              :type="MENU_TYPE_META[data.menuType]?.tag ?? 'info'"
-              disable-transitions
+            <StatusPlate
+              :tone="MENU_TYPE_META[data.menuType]?.tone ?? 'idle'"
+              :dot="false"
             >
               {{ MENU_TYPE_META[data.menuType]?.label ?? data.menuType }}
-            </el-tag>
+            </StatusPlate>
             <span class="node-name">{{ data.menuName }}</span>
             <code v-if="data.perms" class="node-perm">{{ data.perms }}</code>
           </span>
@@ -398,11 +418,9 @@ onMounted(loadList)
   text-align: left;
 }
 
-.toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
+.filter-bar {
+  padding: var(--sp-4);
+  border-bottom: 1px solid var(--line-soft);
 }
 
 .filters {
@@ -410,9 +428,12 @@ onMounted(loadList)
   gap: 10px;
 }
 
-.pagination {
-  margin-top: 16px;
+/* 分页在面板底部 */
+.table-pager {
+  display: flex;
   justify-content: flex-end;
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--line-soft);
 }
 
 .menu-tree {
@@ -429,23 +450,23 @@ onMounted(loadList)
 }
 
 .node-name {
-  color: var(--text-h);
+  color: var(--ink-1);
 }
 
 /* 权限标识用等宽字体，和代码里的写法一致，方便对照 */
 .node-perm {
   padding: 1px 6px;
-  border-radius: 4px;
-  background: var(--code-bg);
-  font-family: var(--mono);
+  border-radius: var(--r-control);
+  background: var(--sunken);
+  font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--text);
+  color: var(--ink-2);
 }
 
 .tip {
   margin-top: 12px;
   font-size: 12px;
   line-height: 1.6;
-  color: #94a3b8;
+  color: var(--ink-3);
 }
 </style>

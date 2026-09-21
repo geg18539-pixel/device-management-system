@@ -57,6 +57,32 @@ public class SysUser {
     @Column(name = "password", nullable = false, length = 100)
     private String password;
 
+    /**
+     * 密码最后修改时间。
+     *
+     * <p>用来算"密码还有多少天到期"。**允许为空**：这张表在加这个字段之前就有数据了，
+     * 那些行是 NULL。服务层对 NULL 的处理是**按"刚改过"算**（也就是当作还没到期）——
+     * 反过来的话，升级完所有老用户一登录就被判定为"密码已过期"，直接进不去系统。
+     *
+     * <p>注意默认值刻意是 null 而不是 now()：实体上的字段初始值只在**新建对象**时生效，
+     * 对已经存在的行没有作用（ddl-auto 只加列不回填），所以不能依赖它。
+     */
+    @Column(name = "pwd_update_time")
+    private LocalDateTime pwdUpdateTime;
+
+    /**
+     * 是否必须先修改密码才能使用系统。
+     *
+     * <p>三种情况置为 true：新建用户、管理员重置密码、**账号仍在使用初始默认密码**。
+     * 最后一种由启动时的数据修补贴上（见 SystemDataSeeder），
+     * 因为老库里的 admin 是早就存在的行，加列时拿不到这个标记。
+     *
+     * <p>用 Boolean 而不是 boolean：加列时已有行是 NULL，
+     * 拆箱会抛 NPE。判断一律用 {@code Boolean.TRUE.equals(...)}。
+     */
+    @Column(name = "must_change_password")
+    private Boolean mustChangePassword = Boolean.FALSE;
+
     @Size(max = 50, message = "昵称不能超过 50 个字符")
     @Column(name = "nickname", length = 50)
     private String nickname;
@@ -72,6 +98,15 @@ public class SysUser {
     /** 账号状态：正常 / 停用 */
     @Column(name = "status", nullable = false, length = 20)
     private String status = "正常";
+
+    /**
+     * 所属部门 id，指向 sys_dept。null 表示未分配。
+     *
+     * <p>存裸 id 而不是 @ManyToOne，理由同 Device.deptId：
+     * 避开 open-in-view=false 下的懒加载问题。
+     */
+    @Column(name = "dept_id")
+    private Long deptId;
 
     /**
      * 最后登录时间 / 最后登录 IP。
@@ -137,6 +172,23 @@ public class SysUser {
         this.password = password;
     }
 
+    public LocalDateTime getPwdUpdateTime() {
+        return pwdUpdateTime;
+    }
+
+    public void setPwdUpdateTime(LocalDateTime pwdUpdateTime) {
+        this.pwdUpdateTime = pwdUpdateTime;
+    }
+
+    /** 是否需要强制改密。null 一律当 false，避免拆箱 NPE（加列时老数据是 NULL） */
+    public boolean isMustChangePassword() {
+        return Boolean.TRUE.equals(mustChangePassword);
+    }
+
+    public void setMustChangePassword(Boolean mustChangePassword) {
+        this.mustChangePassword = mustChangePassword;
+    }
+
     public String getNickname() {
         return nickname;
     }
@@ -167,6 +219,14 @@ public class SysUser {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public Long getDeptId() {
+        return deptId;
+    }
+
+    public void setDeptId(Long deptId) {
+        this.deptId = deptId;
     }
 
     public LocalDateTime getLastLoginTime() {

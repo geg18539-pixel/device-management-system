@@ -14,6 +14,15 @@ public class DeviceRepairRequest {
     @Size(max = 500, message = "故障描述不能超过 500 个字符")
     private String faultDesc;
 
+    /**
+     * 故障类型。存的是**字典项的值**（如 MECH），前端从「故障类型」字典的下拉里选。
+     *
+     * <p>选填：报修时可能还没判断出类型，不该逼着人选。
+     * 值是否合法由服务层对照字典校验（字典没配就放行，见 SysDictService.isValidValue）。
+     */
+    @Size(max = 50, message = "故障类型不能超过 50 个字符")
+    private String faultType;
+
     @Size(max = 50, message = "报修人不能超过 50 个字符")
     private String reporter;
 
@@ -23,6 +32,14 @@ public class DeviceRepairRequest {
 
     public void setFaultDesc(String faultDesc) {
         this.faultDesc = faultDesc;
+    }
+
+    public String getFaultType() {
+        return faultType;
+    }
+
+    public void setFaultType(String faultType) {
+        this.faultType = faultType;
     }
 
     public String getReporter() {

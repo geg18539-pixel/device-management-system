@@ -3,18 +3,20 @@ package com.yan.backend.service.impl;
 import com.yan.backend.dto.AiFaultAnalysisResult;
 import com.yan.backend.entity.Device;
 import com.yan.backend.entity.DeviceCategory;
+import com.yan.backend.ai.provider.AiProviderRegistry;
+import com.yan.backend.ai.provider.ChatMessage;
+import com.yan.backend.ai.provider.LlmProvider;
+import com.yan.backend.ai.provider.StructuredRequest;
 import com.yan.backend.entity.DeviceRepair;
 import com.yan.backend.repository.DeviceCategoryRepository;
 import com.yan.backend.repository.DeviceRepairRepository;
 import com.yan.backend.repository.DeviceRepository;
 import com.yan.backend.service.AiFaultAnalysisService;
+import com.yan.backend.service.AiSettingsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -47,30 +49,29 @@ public class AiFaultAnalysisServiceImpl implements AiFaultAnalysisService {
 
             只根据用户给出的故障描述判断。信息不足时给出通用的排查思路，
             不要编造具体的型号、参数或零件编号。
+
+            只输出一个 JSON 对象，不要任何额外说明、解释或 Markdown 代码块标记。
             """;
 
-    private final RestClient ollamaRestClient;
+    private final AiProviderRegistry providerRegistry;
+    private final AiSettingsService settings;
     private final ObjectMapper objectMapper;
     private final DeviceRepairRepository deviceRepairRepository;
     private final DeviceRepository deviceRepository;
     private final DeviceCategoryRepository deviceCategoryRepository;
-    private final String model;
-    private final int maxTokens;
 
-    public AiFaultAnalysisServiceImpl(RestClient ollamaRestClient,
+    public AiFaultAnalysisServiceImpl(AiProviderRegistry providerRegistry,
+                                      AiSettingsService settings,
                                       ObjectMapper objectMapper,
                                       DeviceRepairRepository deviceRepairRepository,
                                       DeviceRepository deviceRepository,
-                                      DeviceCategoryRepository deviceCategoryRepository,
-                                      @Value("${app.ai.model}") String model,
-                                      @Value("${app.ai.analysis-max-tokens:800}") int maxTokens) {
-        this.ollamaRestClient = ollamaRestClient;
+                                      DeviceCategoryRepository deviceCategoryRepository) {
+        this.providerRegistry = providerRegistry;
+        this.settings = settings;
         this.objectMapper = objectMapper;
         this.deviceRepairRepository = deviceRepairRepository;
         this.deviceRepository = deviceRepository;
         this.deviceCategoryRepository = deviceCategoryRepository;
-        this.model = model;
-        this.maxTokens = maxTokens;
     }
 
     /**
@@ -83,6 +84,13 @@ public class AiFaultAnalysisServiceImpl implements AiFaultAnalysisService {
      *
      * <p>不加事务后，每次 repository 调用各自是独立的小事务，
      * AI 调用期间不持有任何数据库连接。
+     *
+     * <p><b>★ 写回一律用定向 update，绝不 save(实体)。</b>
+     * 这里曾经有个很隐蔽的丢失更新 bug：开头查出整个工单实体，调完模型（十几秒后）
+     * 再 save 回去，那个 save 会把**整行**用几十秒前的旧值覆盖一遍 ——
+     * 用户在分析期间点的「受理」「指派」会在分析结束时被静默抹掉，
+     * 表现为"点了受理也返回成功，过一会儿刷新又变回没受理"。
+     * 定向 update 让这个异步任务只能写它自己负责的几个 AI 字段。
      */
     @Override
     @Async("aiExecutor")
@@ -96,23 +104,21 @@ public class AiFaultAnalysisServiceImpl implements AiFaultAnalysisService {
         }
 
         // 先落一个"分析中"，前端能看到进度，而不是一直显示"待分析"让人以为没触发
-        repair.setAiStatus(DeviceRepair.AI_RUNNING);
-        repair.setAiError(null);
-        deviceRepairRepository.save(repair);
+        deviceRepairRepository.updateAiRunning(repairId, DeviceRepair.AI_RUNNING, settings.chatModel());
 
         try {
             String userPrompt = buildUserPrompt(repair);
             AiFaultAnalysisResult result = callModel(userPrompt);
 
-            repair.setAiSeverity(result.severity());
-            repair.setAiPossibleCauses(join(result.possibleCauses()));
-            repair.setAiSuggestion(join(result.suggestedSteps()));
-            repair.setAiEstimatedHours(result.estimatedHours());
-            repair.setAiModel(model);
-            repair.setAiAnalyzedAt(LocalDateTime.now());
-            repair.setAiStatus(DeviceRepair.AI_DONE);
-            repair.setAiError(null);
-            deviceRepairRepository.save(repair);
+            deviceRepairRepository.updateAiResult(
+                    repairId,
+                    DeviceRepair.AI_DONE,
+                    result.severity(),
+                    join(result.possibleCauses()),
+                    join(result.suggestedSteps()),
+                    result.estimatedHours(),
+                    settings.chatModel(),
+                    LocalDateTime.now());
 
             log.info("AI 分析完成：工单#{}，严重程度={}，耗时={}ms",
                     repairId, result.severity(), System.currentTimeMillis() - start);
@@ -122,11 +128,12 @@ public class AiFaultAnalysisServiceImpl implements AiFaultAnalysisService {
             // 这里只把状态和原因记下来，前端显示"分析失败 + 原因 + 重新分析按钮"。
             log.warn("AI 分析失败：工单#{}，原因={}", repairId, e.getMessage());
             try {
-                repair.setAiStatus(DeviceRepair.AI_FAILED);
-                repair.setAiError(truncate(e.getMessage() == null
-                        ? e.getClass().getSimpleName() : e.getMessage(), 1000));
-                repair.setAiModel(model);
-                deviceRepairRepository.save(repair);
+                deviceRepairRepository.updateAiFailed(
+                        repairId,
+                        DeviceRepair.AI_FAILED,
+                        truncate(e.getMessage() == null
+                                ? e.getClass().getSimpleName() : e.getMessage(), 1000),
+                        settings.chatModel());
             } catch (Exception saveError) {
                 // 连失败状态都写不进去，只能记日志了
                 log.error("写入 AI 分析失败状态时又出错：工单#{}", repairId, saveError);
@@ -139,47 +146,87 @@ public class AiFaultAnalysisServiceImpl implements AiFaultAnalysisService {
     // ============================================================
 
     private AiFaultAnalysisResult callModel(String userPrompt) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("model", model);
-        payload.put("messages", List.of(
-                Map.of("role", "system", "content", ANALYSIS_SYSTEM_PROMPT),
-                Map.of("role", "user", "content", userPrompt)));
-        // 这里要的是完整 JSON，不是流式分片
-        payload.put("stream", false);
-        // format 传 JSON Schema，让 Ollama 约束输出结构。
-        // 这样即使小模型判断水平有限，至少返回的 JSON 是合法且字段齐全的。
-        payload.put("format", buildJsonSchema());
-        payload.put("options", Map.of(
-                // 分析类任务要的是稳定结论，不是创意，温度调低
-                "temperature", 0.3,
-                "num_predict", maxTokens));
+        LlmProvider provider = providerRegistry.currentLlm();
 
-        JsonNode response = ollamaRestClient.post()
-                .uri("/api/chat")
-                .contentType(MediaType.APPLICATION_JSON)
-                .accept(MediaType.APPLICATION_JSON)
-                .body(payload)
-                .retrieve()
-                .body(JsonNode.class);
+        StructuredRequest request = new StructuredRequest(
+                // 传 null 让提供方决定用哪个模型（管理员在系统设置里配的那个）
+                null,
+                List.of(
+                        ChatMessage.system(ANALYSIS_SYSTEM_PROMPT),
+                        ChatMessage.user(userPrompt)),
+                buildJsonSchema(),
+                settings.analysisTemperature(),
+                settings.analysisMaxTokens());
 
-        String content = response == null
-                ? null : response.path("message").path("content").asString();
+        // ⚠️ 提供方**不保证**返回的一定是干净 JSON：各家的结构化输出支持程度差别很大
+        // （原生 Ollama 能强约束、OpenAI 有 json_object、还有些服务直接忽略这个参数）。
+        // 所以下面必须容忍"一段带 JSON 的自由文本"
+        String content = provider.structured(request);
         if (content == null || content.isBlank()) {
             throw new IllegalStateException("模型返回内容为空");
         }
 
-        JsonNode parsed;
-        try {
-            parsed = objectMapper.readTree(content);
-        } catch (Exception e) {
-            throw new IllegalStateException("模型返回的不是合法 JSON：" + truncate(content, 200));
-        }
+        JsonNode parsed = extractJson(content);
 
         return new AiFaultAnalysisResult(
                 normalizeSeverity(parsed.path("severity").asString()),
                 toStringList(parsed.path("possibleCauses")),
                 toStringList(parsed.path("suggestedSteps")),
                 toDecimal(parsed.path("estimatedHours")));
+    }
+
+    /**
+     * 从模型返回的文本里抠出 JSON 对象。
+     *
+     * <p>三层兜底，因为"结构化输出"这件事**没有跨厂商的统一保证**：
+     * <ol>
+     *   <li>直接解析 —— 支持约束的提供方（原生 Ollama / OpenAI）会走到这一步；</li>
+     *   <li>去掉 {@code ```json} 代码围栏再解析 —— 模型习惯性地包一层，很常见；</li>
+     *   <li>取文本里第一个 {@code &#123;} 到最后一个 {@code &#125;} 之间的内容 ——
+     *       模型絮絮叨叨说了一堆再给 JSON 时靠这个救回来。</li>
+     * </ol>
+     * 三层都失败才报错。相比"假定返回的一定是 JSON"，这里多写十几行，
+     * 换来的是**换一个提供方不用改代码**。
+     */
+    private JsonNode extractJson(String content) {
+        String text = content.strip();
+
+        JsonNode direct = tryParse(text);
+        if (direct != null) {
+            return direct;
+        }
+
+        if (text.startsWith("```")) {
+            int firstNewline = text.indexOf('\n');
+            int lastFence = text.lastIndexOf("```");
+            if (firstNewline > 0 && lastFence > firstNewline) {
+                JsonNode unfenced = tryParse(text.substring(firstNewline + 1, lastFence).strip());
+                if (unfenced != null) {
+                    return unfenced;
+                }
+            }
+        }
+
+        int start = text.indexOf('{');
+        int end = text.lastIndexOf('}');
+        if (start >= 0 && end > start) {
+            JsonNode embedded = tryParse(text.substring(start, end + 1));
+            if (embedded != null) {
+                return embedded;
+            }
+        }
+
+        throw new IllegalStateException("模型返回的不是合法 JSON：" + truncate(content, 200));
+    }
+
+    private JsonNode tryParse(String text) {
+        try {
+            JsonNode node = objectMapper.readTree(text);
+            // readTree 对 "" 之类的输入会返回 null 而不是抛异常，这里一并挡掉
+            return node != null && node.isObject() ? node : null;
+        } catch (Exception ex) {
+            return null;
+        }
     }
 
     /** JSON Schema：约束模型必须返回这四个字段，且类型正确 */

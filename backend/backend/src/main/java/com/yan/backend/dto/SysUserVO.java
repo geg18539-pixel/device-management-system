@@ -23,6 +23,9 @@ public class SysUserVO {
     private String status;
     private LocalDateTime createTime;
 
+    /** 所属部门 id，为空表示未分配。对应 sys_dept 表 */
+    private Long deptId;
+
     /** 最后一次登录的时间 / 来源 IP。从未登录过则是 null */
     private LocalDateTime lastLoginTime;
     private String lastLoginIp;
@@ -87,6 +90,14 @@ public class SysUserVO {
 
     public void setCreateTime(LocalDateTime createTime) {
         this.createTime = createTime;
+    }
+
+    public Long getDeptId() {
+        return deptId;
+    }
+
+    public void setDeptId(Long deptId) {
+        this.deptId = deptId;
     }
 
     public LocalDateTime getLastLoginTime() {

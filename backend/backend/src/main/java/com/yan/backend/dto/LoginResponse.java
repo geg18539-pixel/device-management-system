@@ -28,6 +28,27 @@ public class LoginResponse {
     /** 角色标识集合，如 ["admin"]，前端据此过滤菜单 */
     private Set<String> roles;
 
+    /**
+     * 细粒度权限点集合，前端据此做**按钮级**显示隐藏。
+     *
+     * <p>登录时就返回，省得前端登录后再补一次 /auth/me 请求。
+     */
+    private Set<String> perms;
+
+    /**
+     * 是否需要强制修改密码。
+     *
+     * <p>为 true 时前端必须跳到改密页，且**后端会拦住其它所有接口**（返回 428）——
+     * 只靠前端跳转是不够的，绕过前端直接调接口就能继续用系统。
+     */
+    private boolean mustChangePassword;
+
+    /** 密码还有多少天到期（负数表示已过期）。null 表示不适用 */
+    private Long passwordExpireDays;
+
+    /** 密码是否已经过期。过期和"被强制改密"都要求改密，但提示文案不同 */
+    private boolean passwordExpired;
+
     public String getToken() {
         return token;
     }
@@ -82,5 +103,37 @@ public class LoginResponse {
 
     public void setRoles(Set<String> roles) {
         this.roles = roles;
+    }
+
+    public Set<String> getPerms() {
+        return perms;
+    }
+
+    public void setPerms(Set<String> perms) {
+        this.perms = perms;
+    }
+
+    public boolean isMustChangePassword() {
+        return mustChangePassword;
+    }
+
+    public void setMustChangePassword(boolean mustChangePassword) {
+        this.mustChangePassword = mustChangePassword;
+    }
+
+    public Long getPasswordExpireDays() {
+        return passwordExpireDays;
+    }
+
+    public void setPasswordExpireDays(Long passwordExpireDays) {
+        this.passwordExpireDays = passwordExpireDays;
+    }
+
+    public boolean isPasswordExpired() {
+        return passwordExpired;
+    }
+
+    public void setPasswordExpired(boolean passwordExpired) {
+        this.passwordExpired = passwordExpired;
     }
 }

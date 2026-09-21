@@ -6,7 +6,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
-import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.Size;
 import org.hibernate.annotations.CreationTimestamp;
@@ -67,8 +66,8 @@ public class SysLoginLog {
     private Boolean success;
 
     /** 失败原因，成功时为 null */
-    @Lob
-    @Column(name = "fail_reason")
+    // ⚠️ 不能用 @Lob：MySQL 上会生成 tinytext/tinyblob（255 字节），详见 entity/package-info.java
+    @Column(name = "fail_reason", columnDefinition = "TEXT")
     private String failReason;
 
     @Column(name = "login_time", nullable = false)

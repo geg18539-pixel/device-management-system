@@ -6,7 +6,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
-import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -52,8 +51,8 @@ public class DeviceRepairLog {
     private String logType;
 
     @NotBlank(message = "日志内容不能为空")
-    @Lob
-    @Column(name = "content", nullable = false)
+    // ⚠️ 不能用 @Lob：MySQL 上会生成 tinytext/tinyblob（255 字节），详见 entity/package-info.java
+    @Column(name = "content", nullable = false, columnDefinition = "TEXT")
     private String content;
 
     /** 操作人。自动生成的日志记录工单报修人/维修人，手工日志记录当前登录用户 */

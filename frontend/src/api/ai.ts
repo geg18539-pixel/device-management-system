@@ -11,9 +11,43 @@ export interface AiModels {
   defaultModel: string
 }
 
-/** 列出 Ollama 已安装的模型，顺带验证它是否在运行 */
-export function getAiModels() {
-  return request.get<AiModels>('/ai/models')
+/** 某一类用途（对话 / 嵌入）当前生效的配置 */
+export interface AiProviderStatus {
+  /** ollama / openai */
+  provider: string
+  providerLabel: string
+  /** **生效的**服务地址（库里没配就用配置文件/环境变量的） */
+  baseUrl: string
+  /** **生效的**模型名 */
+  model: string
+  /** 密钥配没配。**后端只返回布尔值，永远不会回显内容** */
+  apiKeyConfigured: boolean
+  /** 支不支持函数调用。只有对话侧有意义 */
+  supportsTools: boolean
+}
+
+export interface AiStatus {
+  /** 可选的提供方，给下拉用 */
+  providers: { value: string; label: string }[]
+  chat: AiProviderStatus
+  embedding: AiProviderStatus
+}
+
+/** 当前生效的 AI 配置摘要（脱敏，不含密钥） */
+export function getAiStatus() {
+  return request.get<AiStatus>('/ai/status')
+}
+
+/**
+ * 列出当前提供方下可用的模型。**同时充当连通性检查**。
+ *
+ * <p>失败时抛出的异常里已经写清了是哪一家、哪个地址、要不要配密钥，
+ * 由调用方的拦截器统一弹出来。
+ *
+ * @param purpose chat（对话）或 embedding（嵌入）—— 两边可以接不同的提供方，要分别测
+ */
+export function getAiModels(purpose: 'chat' | 'embedding' = 'chat') {
+  return request.get<AiModels>('/ai/models', { params: { purpose } })
 }
 
 /**

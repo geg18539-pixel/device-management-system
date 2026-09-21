@@ -38,6 +38,16 @@ public class SysUserSaveRequest {
     @Size(max = 20, message = "状态不能超过 20 个字符")
     private String status;
 
+    /**
+     * 所属部门 id，为空表示未分配。
+     *
+     * <p>采用**整体赋值**语义（不像 roleIds 那样"null 表示不改"）：
+     * 用户表单每次都会带上当前值，清空选择就是真的要解绑部门。
+     * 因此那些不发这个字段的调用方会把部门清掉 —— 目前只有用户
+     * 新增/编辑接口会走到这里，而它总是带上这个字段。
+     */
+    private Long deptId;
+
     /** 要分配给该用户的角色 id 列表，可以为空 */
     private List<Long> roleIds;
 
@@ -95,6 +105,14 @@ public class SysUserSaveRequest {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public Long getDeptId() {
+        return deptId;
+    }
+
+    public void setDeptId(Long deptId) {
+        this.deptId = deptId;
     }
 
     public List<Long> getRoleIds() {

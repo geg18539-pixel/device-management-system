@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import {
   MENU_TYPE,
+  MENU_TYPE_META,
   MENU_TYPE_OPTIONS,
   createMenu,
   deleteMenu,
@@ -12,6 +13,13 @@ import {
   type SysMenuTree,
   type MenuType,
 } from '../api/menu'
+import { usePerm } from '../composables/usePerm'
+import DataPanel from '../components/DataPanel.vue'
+import EmptyState from '../components/EmptyState.vue'
+import PageHeader from '../components/PageHeader.vue'
+import StatusPlate from '../components/StatusPlate.vue'
+
+const { hasPerm } = usePerm()
 
 const loading = ref(false)
 const menuTree = ref<SysMenuTree[]>([])
@@ -28,14 +36,12 @@ async function loadTree() {
 }
 
 /** 菜单类型对应的标签颜色：目录蓝、菜单绿、按钮灰 */
-function menuTypeTag(type: MenuType): 'primary' | 'success' | 'info' {
-  if (type === MENU_TYPE.DIR) return 'primary'
-  if (type === MENU_TYPE.MENU) return 'success'
-  return 'info'
-}
-
-function menuTypeLabel(type: MenuType): string {
-  return MENU_TYPE_OPTIONS.find((o) => o.value === type)?.label ?? type
+/**
+ * 菜单类型的文案与色调。走 api/menu.ts 里的 MENU_TYPE_META，
+ * 和角色授权树共用一份，避免两处各写一套之后对不上
+ */
+function menuTypeMeta(type: MenuType) {
+  return MENU_TYPE_META[type] ?? { label: type as string, tone: 'idle' as const }
 }
 
 /**
@@ -179,56 +185,62 @@ onMounted(loadTree)
 
 <template>
   <div class="page">
-    <div class="toolbar">
-      <span class="hint">菜单以树形展示，展开可以看到下级</span>
-      <el-button type="primary" @click="openCreate(0)">新增菜单</el-button>
-    </div>
-
-    <el-table
-      v-loading="loading"
-      :data="menuTree"
-      row-key="id"
-      :tree-props="{ children: 'children' }"
-      default-expand-all
-      border
+    <PageHeader
+      title="菜单管理"
+      desc="菜单以树形展示，展开可以看到下级；「按钮」类型的节点只用来挂权限标识"
     >
-      <el-table-column prop="menuName" label="菜单名称" min-width="200" />
-      <el-table-column label="类型" width="80">
-        <template #default="{ row }">
-          <el-tag :type="menuTypeTag(row.menuType)" disable-transitions>
-            {{ menuTypeLabel(row.menuType) }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="icon" label="图标" width="90" />
-      <el-table-column prop="path" label="路由路径" min-width="150" show-overflow-tooltip />
-      <el-table-column prop="component" label="组件路径" min-width="150" show-overflow-tooltip />
-      <el-table-column prop="perms" label="权限标识" min-width="150" show-overflow-tooltip />
-      <el-table-column prop="sortOrder" label="排序" width="70" />
-      <el-table-column label="显示" width="70">
-        <template #default="{ row }">
-          <span>{{ row.visible === 1 ? '是' : '否' }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="200" fixed="right">
-        <template #default="{ row }">
-          <el-button
-            v-if="row.menuType !== 'B'"
-            link
-            type="primary"
-            @click="openCreate(row.id)"
-          >
-            新增下级
-          </el-button>
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
-        </template>
-      </el-table-column>
-
-      <template #empty>
-        <el-empty description="暂无菜单数据" />
+      <template #actions>
+        <el-button v-if="hasPerm('sys:menu:add')" type="primary" @click="openCreate(0)">
+          新增菜单
+        </el-button>
       </template>
-    </el-table>
+    </PageHeader>
+
+    <DataPanel flush>
+      <el-table
+        v-loading="loading"
+        :data="menuTree"
+        row-key="id"
+        :tree-props="{ children: 'children' }"
+        default-expand-all
+      >
+        <el-table-column prop="menuName" label="菜单名称" min-width="200" />
+        <el-table-column label="类型" width="80">
+          <template #default="{ row }">
+            <StatusPlate :tone="menuTypeMeta(row.menuType).tone" :dot="false">
+              {{ menuTypeMeta(row.menuType).label }}
+            </StatusPlate>
+          </template>
+        </el-table-column>
+        <el-table-column prop="icon" label="图标" width="90" />
+        <el-table-column prop="path" label="路由路径" min-width="150" show-overflow-tooltip />
+        <el-table-column prop="component" label="组件路径" min-width="150" show-overflow-tooltip />
+        <el-table-column prop="perms" label="权限标识" min-width="150" show-overflow-tooltip />
+        <el-table-column prop="sortOrder" label="排序" width="70" />
+        <el-table-column label="显示" width="70">
+          <template #default="{ row }">
+            <span>{{ row.visible === 1 ? '是' : '否' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="200" fixed="right">
+          <template #default="{ row }">
+            <el-button v-if="(row.menuType !== 'B') && hasPerm('sys:menu:add')"
+              link
+              type="primary"
+              @click="openCreate(row.id)"
+            >
+              新增下级
+            </el-button>
+            <el-button v-if="hasPerm('sys:menu:edit')" link type="primary" @click="openEdit(row)">编辑</el-button>
+            <el-button v-if="hasPerm('sys:menu:remove')" link type="danger" @click="handleDelete(row)">删除</el-button>
+          </template>
+        </el-table-column>
+
+        <template #empty>
+          <EmptyState title="还没有菜单" desc="先建目录和菜单，再去角色管理里分配权限" />
+        </template>
+      </el-table>
+    </DataPanel>
 
     <!-- 新增 / 编辑 -->
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="540px">
@@ -301,15 +313,4 @@ onMounted(loadTree)
   text-align: left;
 }
 
-.toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-}
-
-.hint {
-  font-size: 13px;
-  color: #94a3b8;
-}
 </style>

@@ -1,0 +1,191 @@
+/*
+ * 设计 token
+ * ============================================================
+ * 全站唯一的颜色、间距、圆角、字体来源。页面里不写裸色值，
+ * 一律引用这里的变量 —— 这样换主题只需要重定义这一层，
+ * 组件代码一行都不用动。
+ *
+ * 命名是语义化的：--ink-2 表示"次要文字"，不叫 --gray-500。
+ * 换配色方案时改的是值，不是所有引用点。
+ *
+ * 暗色用 html.dark 选择器，和 Element Plus 的暗色机制对齐
+ * （它自己的暗色变量也写在 html.dark 下），切换时只需给
+ * <html> 加一个类。
+ *
+ * 所有前景/背景组合都过了 WCAG AA（正文 4.5:1，图标 3:1），
+ * 逐组算过。改颜色时请一并复核，尤其是 --ink-3 和 --ink-4，
+ * 它们离达标线很近，往下调一点就会不达标。
+ */
+
+:root {
+  /* ── 字体 ──────────────────────────────────────────────
+     不引 web font：国内访问 Google Fonts 不可靠，而且中文字体
+     文件动辄几 MB。用系统栈，把中文优先级排好。
+     数字的等宽对齐不靠字体，靠 font-variant-numeric: tabular-nums
+     （见 base.css 的 .num）。 */
+  --font: system-ui, -apple-system, "Segoe UI", "PingFang SC",
+          "HarmonyOS Sans SC", "Microsoft YaHei", "Source Han Sans SC",
+          sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", "Cascadia Code",
+               Consolas, "Courier New", monospace;
+
+  /* ── 面：三个层次 ──────────────────────────────────────
+     工作区底 / 面板 / 凹陷（表头、代码块、只读输入框）。
+     层次靠这三个底色加分隔线表达，不靠投影。 */
+  --canvas:      #f1f4f6;
+  --surface:     #ffffff;
+  --sunken:      #e7ecef;
+
+  /* ── 标签纸：唯一一个**故意不跟随主题**的颜色 ──────────
+     二维码是给机器扫的，必须浅底深码 —— 暗色主题下把码反过来
+     渲染（浅码压深底）很多扫码器认不出来，而扫不出来的二维码
+     是完全没用的。所以「资产标签」那块永远是一张白纸，
+     在亮色和暗色下取值相同。
+     ⚠️ 不要在别处用它做面板底色 —— 那正是 token 化要避免的事。 */
+  --label-paper: #ffffff;
+
+  /* ── 线 ────────────────────────────────────────────────
+     绝大多数场合只用 --line。另外两级是给强调分隔和
+     控件描边用的，用多了界面会显得琐碎。 */
+  --line:        #dae1e6;
+  --line-soft:   #e9eef1;
+  --line-strong: #bcc7cf;
+
+  /* ── 墨：四级文字 ──────────────────────────────────────
+     层级靠字号和字重拉开，不靠把颜色调浅 —— 12px 的次要信息
+     如果为了"看着淡"而调到 3:1，在笔记本屏幕和大屏上都会糊。
+     --ink-4 只用于图标和极弱提示，不用来写正文。
+     --ink-3 是按**最苛刻的底色**定的（工作区底 canvas，而不是
+     面板白的 surface），这样它落在这三个面上都达标。 */
+  --ink-1: #16212a;
+  --ink-2: #55646f;
+  --ink-3: #62717c;
+  --ink-4: #8594a1;
+
+  /* ── 主色：仪表青 ──────────────────────────────────────
+     取工业面板上按钮和指示灯的青蓝。刻意避开 Element Plus 的
+     #409eff 和 Ant Design 的 #1677ff —— 那两个色一出现，
+     界面立刻有"这是某个现成模板"的味道。 */
+  --signal:      #0d758e;
+  --signal-hi:   #0a6478;
+  --signal-weak: #e2f0f4;
+  --signal-line: #b8dbe4;
+  /* 主色之上的文字色。亮色下是白字；暗色的主色更亮，
+     就得反过来用深字，否则白字压在亮青上只有 2.75:1。 */
+  --on-signal:   #ffffff;
+
+  /* ── 状态色：四档，全站唯一一套 ────────────────────────
+     比 Ant Design 的 #52c41a/#faad14/#ff4d4f 压暗一档 ——
+     工业界面里的状态是信息，不是需要抢注意力的装饰。
+     每档配一个 -weak 淡底，用于铭牌和告警卡。 */
+  --ok:        #16794a;  --ok-weak:   #e4f2ea;
+  --warn:      #8f6216;  --warn-weak: #f8f0de;
+  --crit:      #b32318;  --crit-weak: #fae8e6;
+  --idle:      #5e6975;  --idle-weak: #eceff1;
+
+  /* ── 深色区（左侧导航轨）──────────────────────────────
+     两套主题下都保持深色，它是这个界面的身份锚点。
+     --rail-hi 是深色区里的高亮文字（白色），--rail-dim 是分组
+     标题和辅助说明。 */
+  --rail:        #131b21;
+  --rail-2:      #1b242c;
+  --rail-line:   #26323a;
+  --rail-text:   #b9c5cd;
+  --rail-dim:    #7c8a95;
+  --rail-active: #223039;
+  --rail-hi:     #ffffff;
+  /* 深色区里的强调色。不能直接用 --signal —— 亮色的主色是深青
+     （#0d758e），压在 rail-active 上只有 2.55:1，图标基本看不清。
+     所以单独给一个亮版的青，专门服务深色背景 */
+  --rail-accent: #2b9ab5;
+
+  /* ── 其它 ──────────────────────────────────────────────
+     --hover 是表格行悬停底色。它比 --sunken 浅是刻意的：
+     行里有 --ink-3 的次要文字，底色一深就掉到 4.5:1 以下。
+     --on-crit 是深色角标（未读数）上的文字色。
+
+     ⚠️ --ink-3 的适用背景只有三个：--surface / --canvas / --hover。
+     它压不住更暗的 --sunken 和 --*-weak 淡底（会掉到 4.2 左右），
+     那些地方请用 --ink-2。这条约束是算出来的，不是凭感觉定的。 */
+  --hover:       #f7f9fa;
+  --on-crit:     #ffffff;
+
+  /* 全站只允许一种投影，且只给浮层（下拉、弹窗、抽屉）用。
+     面与面之间的层次靠底色和分隔线，不靠影子。 */
+  --shadow-pop: 0 6px 20px rgba(14, 22, 28, .13),
+                0 1px 2px rgba(14, 22, 28, .08);
+
+  /* ── 圆角：分三级，不是一把尺子量到底 ──────────────────
+     面板 6 / 控件 4 / 铭牌 2。层级由圆角本身说清楚。 */
+  --r-panel:   6px;
+  --r-control: 4px;
+  --r-plate:   2px;
+
+  /* ── 间距刻度 ──────────────────────────────────────────
+     只用这几档，别写 13px、18px 这种刻度外的值。 */
+  --sp-1: 4px;  --sp-2: 8px;   --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px;  --sp-8: 32px;
+
+  /* ── 外壳尺寸 ──────────────────────────────────────────*/
+  --rail-w: 232px;
+  --rail-w-collapsed: 60px;
+  --topbar-h: 56px;
+
+  /* ── 基础排版 ──────────────────────────────────────────*/
+  font: 13px/1.55 var(--font);
+  color-scheme: light;
+  color: var(--ink-1);
+  background: var(--canvas);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html.dark {
+  color-scheme: dark;
+
+  --canvas:      #0f1519;
+  --surface:     #161e24;
+  --sunken:      #0b1014;
+
+  /* 和亮色**同值**，这是刻意的 —— 见上面 --label-paper 的说明。
+     暗色下它是一块"贴在深色界面上的白纸"，正是想要的效果 */
+  --label-paper: #ffffff;
+
+  --line:        #253038;
+  --line-soft:   #1d272e;
+  --line-strong: #37444e;
+
+  --ink-1: #e3e9ed;
+  --ink-2: #98a6b1;
+  --ink-3: #7b8a94;
+  --ink-4: #5d6c76;
+
+  --signal:      #37a9c5;
+  --signal-hi:   #56bdd6;
+  --signal-weak: #0d2b34;
+  --signal-line: #1b4753;
+  /* 暗色下主色更亮，压在上面的文字改用深色 */
+  --on-signal:   #0f1519;
+
+  --ok:   #45a86e;  --ok-weak:   #10281b;
+  --warn: #d3a041;  --warn-weak: #2a2113;
+  --crit: #e06756;  --crit-weak: #2c1613;
+  --idle: #818f99;  --idle-weak: #1c242a;
+
+  --rail:        #141d23;
+  --rail-2:      #1b252c;
+  --rail-line:   #24303a;
+  --rail-text:   #b3c0c9;
+  --rail-dim:    #7a8993;
+  --rail-active: #1f2c35;
+  --rail-hi:     #ffffff;
+  --rail-accent: #37a9c5;
+
+  --hover:       #1a2127;
+  --on-crit:     #0f1519;
+
+  --shadow-pop: 0 6px 22px rgba(0, 0, 0, .5),
+                0 1px 2px rgba(0, 0, 0, .4);
+}

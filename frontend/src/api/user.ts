@@ -1,4 +1,5 @@
 import request from '../utils/request'
+import { saveBlob, today } from '../utils/download'
 import type { PageResult } from './types'
 
 /** 对应后端 dto/SysUserVO.java。注意里面**没有** password 字段 */
@@ -9,6 +10,8 @@ export interface SysUser {
   email?: string
   phone?: string
   status: string
+  /** 所属部门 id，为空表示未分配 */
+  deptId?: number
   createTime?: string
   /** 最后一次登录时间 / 来源 IP，从未登录过则为空 */
   lastLoginTime?: string
@@ -32,6 +35,8 @@ export interface SysUserForm {
   email?: string
   phone?: string
   status: string
+  /** 所属部门 id。整个字段一起提交，清空即解绑部门 */
+  deptId?: number
   roleIds: number[]
 }
 
@@ -41,6 +46,8 @@ export interface SysUserQuery {
   pageSize: number
   username?: string
   roleId?: number
+  /** 按所属部门筛选 */
+  deptId?: number
   status?: string
   /** 创建时间范围，格式 YYYY-MM-DD */
   createTimeBegin?: string
@@ -154,16 +161,5 @@ export async function exportUsers(query: SysUserQuery): Promise<void> {
     params: query,
     responseType: 'blob',
   })
-
-  // 用 Blob URL + 临时 <a> 触发浏览器下载，比 window.open 可靠
-  //（window.open 在这种带鉴权头的场景下拿不到文件）
-  const url = window.URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `用户列表_${new Date().toISOString().slice(0, 10)}.xlsx`
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  // 释放 Blob 占用的内存，不释放会一直挂到页面关闭
-  window.URL.revokeObjectURL(url)
+  saveBlob(blob, `用户列表_${today()}.xlsx`)
 }

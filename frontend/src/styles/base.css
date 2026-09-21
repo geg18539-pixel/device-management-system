@@ -1,0 +1,107 @@
+/*
+ * 基础重置与全局工具类
+ * ============================================================
+ * 这里只做两件事：抹掉浏览器默认样式，以及提供少量全局工具类。
+ * 所有颜色都从 tokens.css 取，不写裸色值。
+ *
+ * 页面级的样式请写在各自组件的 <style scoped> 里，
+ * 不要往这个文件里堆。
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--ink-1);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-weight: 600;
+  color: var(--ink-1);
+}
+
+p {
+  margin: 0;
+}
+
+ul,
+ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+a {
+  color: var(--signal);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--signal-hi);
+}
+
+code,
+kbd {
+  font-family: var(--font-mono);
+  font-size: .92em;
+  padding: 2px 6px;
+  border-radius: var(--r-control);
+  background: var(--sunken);
+  color: var(--ink-1);
+}
+
+/* 表格和读数里的数字。
+   等宽对齐是"仪器读数"质感的来源 —— 数量、编号、日期、金额
+   靠它对齐成列，否则每一行的个位数会参差不齐。 */
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* 资产编号、工单号这类标识符。
+   用等宽体的目的不是好看，是让 0/O 和 1/l 分得清。 */
+.mono {
+  font-family: var(--font-mono);
+  letter-spacing: -.2px;
+}
+
+/* 键盘焦点必须看得见。鼠标点击不触发 :focus-visible，
+   所以不会像 :focus 那样到处冒边框。 */
+:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+/* 滚动条：系统默认的灰条偏宽，和这套配色也不搭。
+   设在 html 上靠继承生效，比用 * 选择器开销小。 */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: var(--r-control);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-4);
+}

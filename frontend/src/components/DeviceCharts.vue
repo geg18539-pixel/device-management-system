@@ -3,12 +3,16 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as echarts from 'echarts'
 import type { EChartsOption, EChartsType } from 'echarts'
 import { DEVICE_STATUS, type ChartItem } from '../api/device'
+import DataPanel from './DataPanel.vue'
+import { chartPalette, type ChartPalette } from '../utils/chartColors'
+import { useAppStore } from '../stores/app'
 
 const props = defineProps<{
   statusItems: ChartItem[]
   categoryItems: ChartItem[]
 }>()
 
+const appStore = useAppStore()
 const statusRef = ref<HTMLDivElement>()
 const categoryRef = ref<HTMLDivElement>()
 
@@ -17,16 +21,24 @@ const categoryRef = ref<HTMLDivElement>()
 let statusChart: EChartsType | null = null
 let categoryChart: EChartsType | null = null
 
-/** 状态对应的颜色，和列表页的 el-tag 配色保持一致，看着统一 */
-const STATUS_COLORS: Record<string, string> = {
-  [DEVICE_STATUS.ONLINE]: '#52c41a',
-  [DEVICE_STATUS.OFFLINE]: '#94a3b8',
-  [DEVICE_STATUS.REPAIRING]: '#faad14',
-  [DEVICE_STATUS.IN_USE]: '#1677ff',
+/**
+ * 状态对应的颜色，和列表页的标签配色保持一致，看着统一。
+ * 做成函数而不是常量，是因为配色要跟着主题走（见 utils/chartColors.ts）
+ */
+function statusColors(p: ChartPalette): Record<string, string> {
+  return {
+    [DEVICE_STATUS.ONLINE]: p.ok,
+    [DEVICE_STATUS.OFFLINE]: p.idle,
+    [DEVICE_STATUS.REPAIRING]: p.warn,
+    [DEVICE_STATUS.IN_USE]: p.primary,
+  }
 }
 
 function renderStatus() {
   if (!statusChart) return
+
+  const p = chartPalette(appStore.isDark)
+  const colors = statusColors(p)
 
   const option: EChartsOption = {
     tooltip: { trigger: 'item', formatter: '{b}：{c} 台（{d}%）' },
@@ -38,12 +50,12 @@ function renderStatus() {
         radius: ['45%', '68%'],
         center: ['50%', '45%'],
         avoidLabelOverlap: true,
-        itemStyle: { borderColor: '#fff', borderWidth: 2 },
+        itemStyle: { borderColor: p.separator, borderWidth: 2 },
         label: { formatter: '{b} {c}' },
         data: props.statusItems.map((item) => ({
           name: item.name,
           value: item.value,
-          itemStyle: { color: STATUS_COLORS[item.name] ?? '#c084fc' },
+          itemStyle: { color: colors[item.name] ?? p.idle },
         })),
       },
     ],
@@ -56,6 +68,8 @@ function renderStatus() {
 
 function renderCategory() {
   if (!categoryChart) return
+
+  const p = chartPalette(appStore.isDark)
 
   const option: EChartsOption = {
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
@@ -76,7 +90,7 @@ function renderCategory() {
       {
         type: 'bar',
         barMaxWidth: 46,
-        itemStyle: { color: '#1677ff', borderRadius: [4, 4, 0, 0] },
+        itemStyle: { color: p.primary, borderRadius: [4, 4, 0, 0] },
         label: { show: true, position: 'top' },
         data: props.categoryItems.map((item) => item.value),
       },
@@ -123,23 +137,24 @@ onBeforeUnmount(() => {
 // 数据变化时重绘。deep 是必要的：父组件经常会就地修改数组内容
 watch(() => props.statusItems, renderStatus, { deep: true })
 watch(() => props.categoryItems, renderCategory, { deep: true })
+
+// 主题切换后必须重绘：ECharts 画在 canvas 上，CSS 变量变了它不会自己知道，
+// 否则图上的颜色会停在上一个主题
+watch(() => appStore.isDark, () => {
+  renderStatus()
+  renderCategory()
+})
 </script>
 
 <template>
   <div class="charts">
-    <el-card shadow="never" class="chart-card">
-      <template #header>
-        <span class="chart-title">设备状态分布</span>
-      </template>
+    <DataPanel title="设备状态分布">
       <div ref="statusRef" class="chart-body" />
-    </el-card>
+    </DataPanel>
 
-    <el-card shadow="never" class="chart-card">
-      <template #header>
-        <span class="chart-title">设备分类统计</span>
-      </template>
+    <DataPanel title="设备分类统计">
       <div ref="categoryRef" class="chart-body" />
-    </el-card>
+    </DataPanel>
   </div>
 </template>
 
@@ -158,14 +173,7 @@ watch(() => props.categoryItems, renderCategory, { deep: true })
   }
 }
 
-.chart-title {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-h);
-}
-
-/* 这个高度是必须的：ECharts 靠容器尺寸决定画布大小，
-   高度为 0 或 auto 时会初始化失败并打出 warning */
+/* 图表的标题现在由 DataPanel 提供 */
 .chart-body {
   height: 260px;
 }

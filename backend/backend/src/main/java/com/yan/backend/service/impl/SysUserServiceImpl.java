@@ -26,6 +26,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -117,6 +118,10 @@ public class SysUserServiceImpl implements SysUserService {
                 predicates.add(cb.equal(root.get("status"), query.getStatus().trim()));
             }
 
+            if (query.getDeptId() != null) {
+                predicates.add(cb.equal(root.get("deptId"), query.getDeptId()));
+            }
+
             if (query.getCreateTimeBegin() != null) {
                 predicates.add(cb.greaterThanOrEqualTo(root.get("createTime"),
                         query.getCreateTimeBegin().atStartOfDay()));
@@ -175,10 +180,15 @@ public class SysUserServiceImpl implements SysUserService {
         SysUser user = new SysUser();
         user.setUsername(request.getUsername());
         user.setPassword(passwordEncoder.encode(request.getPassword()));
+        // 新建的账号密码是管理员指定的（或者是个通用初始密码），
+        // 所以要求本人首次登录时必须改掉 —— 否则"初始密码"会一直留在系统里
+        user.setPwdUpdateTime(LocalDateTime.now());
+        user.setMustChangePassword(Boolean.TRUE);
         user.setNickname(request.getNickname());
         user.setEmail(request.getEmail());
         user.setPhone(request.getPhone());
         user.setStatus(StringUtils.hasText(request.getStatus()) ? request.getStatus() : STATUS_NORMAL);
+        user.setDeptId(request.getDeptId());
         user.setRoles(resolveRoles(request.getRoleIds()));
 
         return toVO(sysUserRepository.save(user));
@@ -198,6 +208,8 @@ public class SysUserServiceImpl implements SysUserService {
         existing.setNickname(request.getNickname());
         existing.setEmail(request.getEmail());
         existing.setPhone(request.getPhone());
+        // 部门整体赋值：表单每次都会带上当前值，清空选择就是真的要解绑
+        existing.setDeptId(request.getDeptId());
         if (StringUtils.hasText(request.getStatus())) {
             existing.setStatus(request.getStatus());
         }
@@ -210,6 +222,10 @@ public class SysUserServiceImpl implements SysUserService {
                 throw new IllegalArgumentException(weak);
             }
             existing.setPassword(passwordEncoder.encode(request.getPassword()));
+            // 密码是被管理员改的，本人不知道新密码之外的信息，
+            // 所以要求他下次登录时自己再改一次
+            existing.setPwdUpdateTime(LocalDateTime.now());
+            existing.setMustChangePassword(Boolean.TRUE);
         }
 
         // roleIds 为 null 表示这次请求不涉及角色，保持原样；传空数组才是"清空角色"
@@ -330,6 +346,8 @@ public class SysUserServiceImpl implements SysUserService {
                 continue;
             }
             user.setPassword(passwordEncoder.encode(password));
+            user.setPwdUpdateTime(LocalDateTime.now());
+            user.setMustChangePassword(Boolean.TRUE);
             sysUserRepository.save(user);
             success++;
         }
@@ -367,6 +385,10 @@ public class SysUserServiceImpl implements SysUserService {
         }
         SysUser user = getUser(userId);
         user.setPassword(passwordEncoder.encode(newPassword));
+        // 管理员重置密码后要求本人再改一次：管理员是知道新密码的，
+        // 而账号应该只有本人知道密码
+        user.setPwdUpdateTime(LocalDateTime.now());
+        user.setMustChangePassword(Boolean.TRUE);
         sysUserRepository.save(user);
     }
 
@@ -451,6 +473,7 @@ public class SysUserServiceImpl implements SysUserService {
         vo.setEmail(user.getEmail());
         vo.setPhone(user.getPhone());
         vo.setStatus(user.getStatus());
+        vo.setDeptId(user.getDeptId());
         vo.setCreateTime(user.getCreateTime());
         vo.setLastLoginTime(user.getLastLoginTime());
         vo.setLastLoginIp(user.getLastLoginIp());

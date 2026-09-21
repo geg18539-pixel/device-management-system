@@ -1,0 +1,251 @@
+/*
+ * Element Plus 变量重映射
+ * ============================================================
+ * 项目里所有 el-* 组件的颜色、圆角、字号都从这一层走，页面代码里
+ * 不需要再写 :deep() 去改 EP 的样式。
+ *
+ * ⚠️ 为什么连 light-3/5/7/8/9 和 dark-2 都要手写：
+ * 这些不是由 --el-color-primary 推导出来的，而是 EP 在构建时
+ * 就算好的常量。只改主色的话，按钮 hover 态、禁用态、el-table
+ * 选中行背景、el-menu 悬浮背景会全部停留在原来的蓝色，
+ * 而且**不报错**，只是看着有点怪。
+ *
+ * 生成规则（已拿 EP 产物逐字节验证）：
+ *   亮色：light-N = 主色×(1−N/10) + #ffffff×(N/10)
+ *         dark-2  = 主色×0.8 + #000000×0.2
+ *   暗色：light-N = 主色×(1−N/10) + #141414×(N/10)   ← 混的是 EP 的深色底
+ *         dark-2  = 主色×0.8 + #ffffff×0.2           ← 方向反过来
+ *
+ * 引入顺序必须在 element-plus/dist/index.css 和
+ * theme-chalk/dark/css-vars.css 之后，否则会被它们盖掉。
+ */
+
+/* ============================================================
+   亮色
+   ============================================================ */
+:root {
+  /* 主色：仪表青 */
+  --el-color-primary: #0d758e;
+  --el-color-primary-light-3: #569eb0;
+  --el-color-primary-light-5: #86bac6;
+  --el-color-primary-light-7: #b6d6dd;
+  --el-color-primary-light-8: #cfe3e8;
+  --el-color-primary-light-9: #e7f1f4;
+  --el-color-primary-dark-2: #0a5e72;
+  --el-color-primary-rgb: 13, 117, 142;
+
+  /* 正常 / 在线 */
+  --el-color-success: #16794a;
+  --el-color-success-light-3: #5ca180;
+  --el-color-success-light-5: #8abca4;
+  --el-color-success-light-7: #b9d7c9;
+  --el-color-success-light-8: #d0e4db;
+  --el-color-success-light-9: #e8f2ed;
+  --el-color-success-dark-2: #12613b;
+  --el-color-success-rgb: 22, 121, 74;
+
+  /* 警告 / 临期 */
+  --el-color-warning: #8f6216;
+  --el-color-warning-light-3: #b1915c;
+  --el-color-warning-light-5: #c7b08a;
+  --el-color-warning-light-7: #ddd0b9;
+  --el-color-warning-light-8: #e9e0d0;
+  --el-color-warning-light-9: #f4efe8;
+  --el-color-warning-dark-2: #724e12;
+  --el-color-warning-rgb: 143, 98, 22;
+
+  /* 故障 / 逾期 */
+  --el-color-danger: #b32318;
+  --el-color-danger-light-3: #ca655d;
+  --el-color-danger-light-5: #d9918c;
+  --el-color-danger-light-7: #e8bdba;
+  --el-color-danger-light-8: #f0d3d1;
+  --el-color-danger-light-9: #f7e9e8;
+  --el-color-danger-dark-2: #8f1c13;
+  --el-color-danger-rgb: 179, 35, 24;
+
+  /* 同上（EP 里 danger 与 error 同值） */
+  --el-color-error: #b32318;
+  --el-color-error-light-3: #ca655d;
+  --el-color-error-light-5: #d9918c;
+  --el-color-error-light-7: #e8bdba;
+  --el-color-error-light-8: #f0d3d1;
+  --el-color-error-light-9: #f7e9e8;
+  --el-color-error-dark-2: #8f1c13;
+  --el-color-error-rgb: 179, 35, 24;
+
+  /* 停用 / 中性 */
+  --el-color-info: #5e6975;
+  --el-color-info-light-3: #8e969e;
+  --el-color-info-light-5: #aeb4ba;
+  --el-color-info-light-7: #cfd2d6;
+  --el-color-info-light-8: #dfe1e3;
+  --el-color-info-light-9: #eff0f1;
+  --el-color-info-dark-2: #4b545e;
+  --el-color-info-rgb: 94, 105, 117;
+  /* ── 文本：映射到四级墨色 ── */
+  --el-text-color-primary: var(--ink-1);
+  --el-text-color-regular: var(--ink-1);
+  --el-text-color-secondary: var(--ink-3);
+  --el-text-color-placeholder: var(--ink-3);
+  --el-text-color-disabled: var(--ink-4);
+  --el-text-color: var(--ink-1);
+
+  /* ── 边框：EP 分了六级，我们收敛成三级 ── */
+  --el-border-color: var(--line);
+  --el-border-color-light: var(--line-soft);
+  --el-border-color-lighter: var(--line-soft);
+  --el-border-color-extra-light: var(--line-soft);
+  --el-border-color-dark: var(--line-strong);
+  --el-border-color-darker: var(--line-strong);
+  --el-border-color-hover: var(--line-strong);
+
+  /* ── 填充 ── */
+  --el-fill-color: var(--sunken);
+  --el-fill-color-light: var(--hover);
+  --el-fill-color-lighter: var(--hover);
+  --el-fill-color-extra-light: var(--canvas);
+  --el-fill-color-dark: var(--sunken);
+  --el-fill-color-darker: var(--sunken);
+  --el-fill-color-blank: var(--surface);
+
+  /* ── 背景 ── */
+  --el-bg-color: var(--surface);
+  --el-bg-color-page: var(--canvas);
+  --el-bg-color-overlay: var(--surface);
+
+  /* ── 阴影：全部收敛到一种浮层投影 ── */
+  --el-box-shadow: var(--shadow-pop);
+  --el-box-shadow-light: var(--shadow-pop);
+  --el-box-shadow-lighter: var(--shadow-pop);
+  --el-box-shadow-dark: var(--shadow-pop);
+
+  /* ── 圆角与字号 ── */
+  --el-border-radius-base: var(--r-control);
+  --el-border-radius-small: var(--r-plate);
+  --el-border-radius-round: 20px;
+  --el-border-radius-circle: 100%;
+  --el-font-size-base: 13px;
+  --el-font-size-small: 12px;
+  --el-font-size-extra-small: 11px;
+  --el-font-size-medium: 14px;
+  --el-font-size-large: 16px;
+  --el-font-size-extra-large: 19px;
+
+  /* ── 表格 ──
+     各页模板上的 border / stripe 正在逐步去掉，外观改由这套变量控制。
+     行分隔线用最轻的一级，表头用凹陷底 —— 不要粗边框和斑马纹，
+     那是老式 ERP 的长相。 */
+  --el-table-border-color: var(--line-soft);
+  --el-table-header-bg-color: var(--sunken);
+  --el-table-header-text-color: var(--ink-2);
+  --el-table-text-color: var(--ink-1);
+  --el-table-row-hover-bg-color: var(--hover);
+  --el-table-bg-color: var(--surface);
+  --el-table-tr-bg-color: var(--surface);
+  --el-table-current-row-bg-color: var(--signal-weak);
+}
+
+/* ============================================================
+   暗色
+   ============================================================ */
+html.dark {
+  /* 主色：仪表青 */
+  --el-color-primary: #37a9c5;
+  --el-color-primary-light-3: #2c7c90;
+  --el-color-primary-light-5: #265e6c;
+  --el-color-primary-light-7: #1f4149;
+  --el-color-primary-light-8: #1b3237;
+  --el-color-primary-light-9: #182326;
+  --el-color-primary-dark-2: #5fbad1;
+  --el-color-primary-rgb: 55, 169, 197;
+
+  /* 正常 / 在线 */
+  --el-color-success: #45a86e;
+  --el-color-success-light-3: #367c53;
+  --el-color-success-light-5: #2c5e41;
+  --el-color-success-light-7: #23402f;
+  --el-color-success-light-8: #1e3226;
+  --el-color-success-light-9: #19231d;
+  --el-color-success-dark-2: #6ab98b;
+  --el-color-success-rgb: 69, 168, 110;
+
+  /* 警告 / 临期 */
+  --el-color-warning: #d3a041;
+  --el-color-warning-light-3: #9a7634;
+  --el-color-warning-light-5: #745a2a;
+  --el-color-warning-light-7: #4d3e22;
+  --el-color-warning-light-8: #3a301d;
+  --el-color-warning-light-9: #272218;
+  --el-color-warning-dark-2: #dcb367;
+  --el-color-warning-rgb: 211, 160, 65;
+
+  /* 故障 / 逾期 */
+  --el-color-danger: #e06756;
+  --el-color-danger-light-3: #a34e42;
+  --el-color-danger-light-5: #7a3e35;
+  --el-color-danger-light-7: #512d28;
+  --el-color-danger-light-8: #3d2521;
+  --el-color-danger-light-9: #281c1b;
+  --el-color-danger-dark-2: #e68578;
+  --el-color-danger-rgb: 224, 103, 86;
+
+  /* 同上（EP 里 danger 与 error 同值） */
+  --el-color-error: #e06756;
+  --el-color-error-light-3: #a34e42;
+  --el-color-error-light-5: #7a3e35;
+  --el-color-error-light-7: #512d28;
+  --el-color-error-light-8: #3d2521;
+  --el-color-error-light-9: #281c1b;
+  --el-color-error-dark-2: #e68578;
+  --el-color-error-rgb: 224, 103, 86;
+
+  /* 停用 / 中性 */
+  --el-color-info: #818f99;
+  --el-color-info-light-3: #606a71;
+  --el-color-info-light-5: #4a5256;
+  --el-color-info-light-7: #35393c;
+  --el-color-info-light-8: #2a2d2f;
+  --el-color-info-light-9: #1f2021;
+  --el-color-info-dark-2: #9aa5ad;
+  --el-color-info-rgb: 129, 143, 153;
+  /* 文本 / 边框 / 填充 / 背景 / 阴影 / 圆角都引用 token，
+     在 html.dark 下会自动跟随，不需要重写 —— 这一块只处理
+     必须在暗色下重新计算的色阶。 */
+  --el-text-color-primary: var(--ink-1);
+  --el-text-color-regular: var(--ink-1);
+  --el-text-color-secondary: var(--ink-3);
+  --el-text-color-placeholder: var(--ink-3);
+  --el-text-color-disabled: var(--ink-4);
+  --el-text-color: var(--ink-1);
+  --el-border-color: var(--line);
+  --el-border-color-light: var(--line-soft);
+  --el-border-color-lighter: var(--line-soft);
+  --el-border-color-extra-light: var(--line-soft);
+  --el-border-color-dark: var(--line-strong);
+  --el-border-color-darker: var(--line-strong);
+  --el-border-color-hover: var(--line-strong);
+  --el-fill-color: var(--sunken);
+  --el-fill-color-light: var(--hover);
+  --el-fill-color-lighter: var(--hover);
+  --el-fill-color-extra-light: var(--canvas);
+  --el-fill-color-dark: var(--sunken);
+  --el-fill-color-darker: var(--sunken);
+  --el-fill-color-blank: var(--surface);
+  --el-bg-color: var(--surface);
+  --el-bg-color-page: var(--canvas);
+  --el-bg-color-overlay: var(--surface);
+  --el-box-shadow: var(--shadow-pop);
+  --el-box-shadow-light: var(--shadow-pop);
+  --el-box-shadow-lighter: var(--shadow-pop);
+  --el-box-shadow-dark: var(--shadow-pop);
+
+  --el-table-border-color: var(--line-soft);
+  --el-table-header-bg-color: var(--sunken);
+  --el-table-header-text-color: var(--ink-2);
+  --el-table-text-color: var(--ink-1);
+  --el-table-row-hover-bg-color: var(--hover);
+  --el-table-bg-color: var(--surface);
+  --el-table-tr-bg-color: var(--surface);
+  --el-table-current-row-bg-color: var(--signal-weak);
+}

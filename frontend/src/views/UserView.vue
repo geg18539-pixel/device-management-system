@@ -21,6 +21,15 @@ import {
   type SysUserForm,
 } from '../api/user'
 import { getAllRoles, type SysRole } from '../api/role'
+import { buildDeptNameMap, flattenDepts, getDeptTree, type DeptTree } from '../api/dept'
+import DataPanel from '../components/DataPanel.vue'
+import EmptyState from '../components/EmptyState.vue'
+import PageHeader from '../components/PageHeader.vue'
+import StatusPlate from '../components/StatusPlate.vue'
+import { usePerm } from '../composables/usePerm'
+import type { PlateTone } from '../utils/plateTone'
+
+const { hasPerm } = usePerm()
 
 // ============================================================
 // 查询条件
@@ -37,6 +46,7 @@ const query = reactive({
   pageSize: 10,
   username: '',
   roleId: undefined as number | undefined,
+  deptId: undefined as number | undefined,
   status: '',
   createTimeBegin: '',
   createTimeEnd: '',
@@ -54,7 +64,14 @@ function syncCreateTimeRange() {
 
 /** 有没有用到高级条件 —— 折叠着的时候也要让用户知道"现在筛着呢" */
 const advancedActive = computed(
-  () => !!(query.roleId || query.status || query.createTimeBegin || query.createTimeEnd),
+  () =>
+    !!(
+      query.roleId ||
+      query.deptId ||
+      query.status ||
+      query.createTimeBegin ||
+      query.createTimeEnd
+    ),
 )
 
 async function loadList() {
@@ -65,6 +82,7 @@ async function loadList() {
       pageSize: query.pageSize,
       username: query.username || undefined,
       roleId: query.roleId,
+      deptId: query.deptId,
       status: query.status || undefined,
       createTimeBegin: query.createTimeBegin || undefined,
       createTimeEnd: query.createTimeEnd || undefined,
@@ -89,6 +107,7 @@ function handleSearch() {
 function handleReset() {
   query.username = ''
   query.roleId = undefined
+  query.deptId = undefined
   query.status = ''
   createTimeRange.value = null
   query.createTimeBegin = ''
@@ -258,6 +277,7 @@ async function handleExport() {
       pageSize: query.pageSize,
       username: query.username || undefined,
       roleId: query.roleId,
+      deptId: query.deptId,
       status: query.status || undefined,
       createTimeBegin: query.createTimeBegin || undefined,
       createTimeEnd: query.createTimeEnd || undefined,
@@ -275,9 +295,13 @@ async function handleExport() {
 // ============================================================
 // 列表展示辅助
 // ============================================================
-function statusTagType(status: string): 'success' | 'info' {
-  return status === USER_STATUS.NORMAL ? 'success' : 'info'
+/** 账号状态的铭牌色调 */
+function statusTone(status: string): PlateTone {
+  return status === USER_STATUS.NORMAL ? 'ok' : 'idle'
 }
+
+/** 页头那行说明 */
+const headDesc = computed(() => `共 ${total.value} 个用户`)
 
 function formatTime(value?: string): string {
   if (!value) return '-'
@@ -294,6 +318,28 @@ const editingId = ref<number | null>(null)
 const formRef = ref<FormInstance>()
 const roleOptions = ref<SysRole[]>([])
 
+// ---------------- 部门 ----------------
+const deptTree = ref<DeptTree[]>([])
+
+/** 平铺成下拉选项（用缩进表示层级） */
+const deptOptions = computed(() => flattenDepts(deptTree.value, null))
+
+/** id -> 部门名，用来把表格里的 deptId 显示成部门名 */
+const deptNameMap = computed(() => buildDeptNameMap(deptTree.value))
+
+async function loadDeptOptions() {
+  try {
+    deptTree.value = await getDeptTree()
+  } catch {
+    // 同上
+  }
+}
+
+function deptLabel(deptId?: number): string {
+  if (deptId === undefined || deptId === null) return '未分配'
+  return deptNameMap.value[deptId] ?? `部门#${deptId}`
+}
+
 function emptyForm(): SysUserForm {
   return {
     username: '',
@@ -302,6 +348,7 @@ function emptyForm(): SysUserForm {
     email: '',
     phone: '',
     status: USER_STATUS.NORMAL,
+    deptId: undefined,
     roleIds: [],
   }
 }
@@ -360,6 +407,7 @@ async function openEdit(row: SysUser) {
     email: row.email ?? '',
     phone: row.phone ?? '',
     status: row.status,
+    deptId: row.deptId,
     roleIds: row.roleIds ?? [],
   })
   dialogVisible.value = true
@@ -554,14 +602,31 @@ function handleRowCommand(command: string, row: SysUser) {
 }
 
 onMounted(async () => {
-  await Promise.all([loadList(), loadRoleOptions()])
+  // 角色和部门下拉都要给新增/编辑弹窗用，必须在这里就加载好 ——
+  // 只在"分配角色"时才拉的话，第一次打开新增弹窗会看到空下拉
+  await Promise.all([loadList(), loadRoleOptions(), loadDeptOptions()])
 })
 </script>
 
 <template>
   <div class="page">
+    <PageHeader title="用户管理" :desc="headDesc">
+      <template #actions>
+        <el-button
+          v-if="hasPerm('sys:user:export')"
+          :loading="exporting"
+          @click="handleExport"
+        >
+          导出 Excel
+        </el-button>
+        <el-button v-if="hasPerm('sys:user:add')" type="primary" @click="openCreate">
+          新增用户
+        </el-button>
+      </template>
+    </PageHeader>
+
     <!-- 搜索区 -->
-    <el-card shadow="never" class="search-card">
+    <DataPanel class="search-card">
       <div class="search-row">
         <el-input
           v-model="query.username"
@@ -579,13 +644,6 @@ onMounted(async () => {
           {{ advancedVisible ? '收起高级搜索' : '高级搜索' }}
           <el-badge v-if="advancedActive && !advancedVisible" is-dot class="filter-dot" />
         </el-button>
-
-        <div class="search-right">
-          <el-button type="success" :loading="exporting" @click="handleExport">
-            导出 Excel
-          </el-button>
-          <el-button type="primary" @click="openCreate">新增用户</el-button>
-        </div>
       </div>
 
       <!-- 高级搜索：默认折叠，避免一进页面就被一排输入框糊脸 -->
@@ -599,6 +657,18 @@ onMounted(async () => {
                 :key="role.id"
                 :label="role.roleName"
                 :value="role.id as number"
+              />
+            </el-select>
+          </div>
+
+          <div class="advanced-item">
+            <span class="label">部门</span>
+            <el-select v-model="query.deptId" placeholder="全部" clearable style="width: 170px">
+              <el-option
+                v-for="opt in deptOptions"
+                :key="opt.id"
+                :label="opt.label"
+                :value="opt.id"
               />
             </el-select>
           </div>
@@ -627,146 +697,157 @@ onMounted(async () => {
           <el-button type="primary" @click="handleSearch">应用条件</el-button>
         </div>
       </el-collapse-transition>
-    </el-card>
+    </DataPanel>
 
     <!-- 批量操作条：只在选中了行的时候出现 -->
     <div v-if="selectedRows.length" class="batch-bar">
       <span class="batch-info">
         已选中 <strong>{{ selectedRows.length }}</strong> 项
       </span>
-      <el-button size="small" @click="handleBatchStatus(USER_STATUS.NORMAL)">批量启用</el-button>
-      <el-button size="small" @click="handleBatchStatus(USER_STATUS.DISABLED)">批量停用</el-button>
-      <el-button size="small" @click="handleBatchResetPassword">批量重置密码</el-button>
-      <el-button size="small" type="danger" @click="handleBatchDelete">批量删除</el-button>
+      <el-button v-if="hasPerm('sys:user:edit')" size="small" @click="handleBatchStatus(USER_STATUS.NORMAL)">批量启用</el-button>
+      <el-button v-if="hasPerm('sys:user:edit')" size="small" @click="handleBatchStatus(USER_STATUS.DISABLED)">批量停用</el-button>
+      <el-button v-if="hasPerm('sys:user:reset')" size="small" @click="handleBatchResetPassword">批量重置密码</el-button>
+      <el-button v-if="hasPerm('sys:user:remove')" size="small" type="danger" @click="handleBatchDelete">批量删除</el-button>
       <el-button size="small" link @click="selectedRows = []">取消选择</el-button>
     </div>
 
-    <!-- 列显隐 -->
-    <div class="table-tools">
-      <el-popover placement="bottom-end" :width="180" trigger="click">
-        <template #reference>
-          <el-button size="small">显示列</el-button>
-        </template>
-        <el-checkbox v-model="columns.nickname">昵称</el-checkbox>
-        <el-checkbox v-model="columns.email">邮箱</el-checkbox>
-        <el-checkbox v-model="columns.phone">手机号</el-checkbox>
-        <el-checkbox v-model="columns.roleNames">角色</el-checkbox>
-        <el-checkbox v-model="columns.status">状态</el-checkbox>
-        <el-checkbox v-model="columns.lastLoginTime">最后登录</el-checkbox>
-        <el-checkbox v-model="columns.createTime">创建时间</el-checkbox>
-      </el-popover>
-    </div>
-
-    <!-- 表格：height 让表头固定，超出的部分内部滚动 -->
-    <el-table
-      v-loading="loading"
-      :data="userList"
-      border
-      stripe
-      height="480"
-      :default-sort="{ prop: 'id', order: 'descending' }"
-      @selection-change="handleSelectionChange"
-      @sort-change="handleSortChange"
-    >
-      <el-table-column type="selection" width="46" />
-
-      <el-table-column prop="id" label="ID" width="80" sortable="custom" />
-
-      <el-table-column label="用户名" min-width="130">
-        <template #default="{ row }">
-          <!-- 点用户名看详情，比挤一排按钮更符合直觉 -->
-          <el-link type="primary" :underline="false" @click="openDetail(row)">
-            {{ row.username }}
-          </el-link>
-        </template>
-      </el-table-column>
-
-      <el-table-column v-if="columns.nickname" prop="nickname" label="昵称" min-width="110" />
-
-      <el-table-column
-        v-if="columns.email"
-        prop="email"
-        label="邮箱"
-        min-width="170"
-        show-overflow-tooltip
-      />
-
-      <el-table-column v-if="columns.phone" prop="phone" label="手机号" min-width="130" />
-
-      <el-table-column v-if="columns.roleNames" label="角色" min-width="150">
-        <template #default="{ row }">
-          <template v-if="row.roleNames && row.roleNames.length">
-            <el-tag v-for="name in row.roleNames" :key="name" size="small" class="role-tag">
-              {{ name }}
-            </el-tag>
+    <DataPanel flush>
+      <!-- 列显隐 -->
+      <div class="table-tools">
+        <el-popover placement="bottom-end" :width="180" trigger="click">
+          <template #reference>
+            <el-button size="small">显示列</el-button>
           </template>
-          <span v-else class="muted">未分配</span>
-        </template>
-      </el-table-column>
+          <el-checkbox v-model="columns.nickname">昵称</el-checkbox>
+          <el-checkbox v-model="columns.email">邮箱</el-checkbox>
+          <el-checkbox v-model="columns.phone">手机号</el-checkbox>
+          <el-checkbox v-model="columns.roleNames">角色</el-checkbox>
+          <el-checkbox v-model="columns.status">状态</el-checkbox>
+          <el-checkbox v-model="columns.lastLoginTime">最后登录</el-checkbox>
+          <el-checkbox v-model="columns.createTime">创建时间</el-checkbox>
+        </el-popover>
+      </div>
 
-      <el-table-column v-if="columns.status" label="状态" width="85">
-        <template #default="{ row }">
-          <el-tag :type="statusTagType(row.status)" disable-transitions>
-            {{ row.status }}
-          </el-tag>
-        </template>
-      </el-table-column>
+      <!-- 表格：height 让表头固定，超出的部分内部滚动 -->
+      <el-table
+          v-loading="loading"
+          :data="userList"
+          height="480"
+          :default-sort="{ prop: 'id', order: 'descending' }"
+          @selection-change="handleSelectionChange"
+          @sort-change="handleSortChange"
+        >
+        <el-table-column type="selection" width="46" />
 
-      <el-table-column
-        v-if="columns.lastLoginTime"
-        label="最后登录"
-        width="165"
-        show-overflow-tooltip
-      >
-        <template #default="{ row }">
-          <span :class="{ muted: !row.lastLoginTime }">
-            {{ row.lastLoginTime ? formatTime(row.lastLoginTime) : '从未登录' }}
-          </span>
-        </template>
-      </el-table-column>
+        <el-table-column prop="id" label="ID" width="80" sortable="custom" />
 
-      <el-table-column v-if="columns.createTime" prop="createTime" label="创建时间" width="165" sortable="custom">
-        <template #default="{ row }">{{ formatTime(row.createTime) }}</template>
-      </el-table-column>
+        <el-table-column label="用户名" min-width="130">
+          <template #default="{ row }">
+            <!-- 点用户名看详情，比挤一排按钮更符合直觉 -->
+            <el-link type="primary" :underline="false" @click="openDetail(row)">
+              {{ row.username }}
+            </el-link>
+          </template>
+        </el-table-column>
 
-      <el-table-column label="操作" width="150" fixed="right">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="openDetail(row)">详情</el-button>
-          <!-- 4 个操作平铺太挤，收进下拉 -->
-          <el-dropdown trigger="click" @command="rowCommandHandler(row)">
-            <el-button link type="primary">
-              更多<span class="caret">▾</span>
-            </el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="edit">编辑</el-dropdown-item>
-                <el-dropdown-item command="roles">分配角色</el-dropdown-item>
-                <el-dropdown-item command="reset">重置密码</el-dropdown-item>
-                <el-dropdown-item command="toggle" divided>
-                  {{ row.status === USER_STATUS.NORMAL ? '停用账号' : '启用账号' }}
-                </el-dropdown-item>
-                <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
-              </el-dropdown-menu>
+        <el-table-column v-if="columns.nickname" prop="nickname" label="昵称" min-width="110" />
+
+        <el-table-column
+          v-if="columns.email"
+          prop="email"
+          label="邮箱"
+          min-width="170"
+          show-overflow-tooltip
+        />
+
+        <el-table-column v-if="columns.phone" prop="phone" label="手机号" min-width="130" />
+
+        <el-table-column label="部门" min-width="120">
+          <template #default="{ row }">
+            <span :class="{ muted: !row.deptId }">{{ deptLabel(row.deptId) }}</span>
+          </template>
+        </el-table-column>
+
+        <el-table-column v-if="columns.roleNames" label="角色" min-width="150">
+          <template #default="{ row }">
+            <template v-if="row.roleNames && row.roleNames.length">
+              <StatusPlate
+                v-for="name in row.roleNames"
+                :key="name"
+                tone="info"
+                :dot="false"
+                class="role-tag"
+              >
+                {{ name }}
+              </StatusPlate>
             </template>
-          </el-dropdown>
-        </template>
-      </el-table-column>
+            <span v-else class="muted">未分配</span>
+          </template>
+        </el-table-column>
 
-      <template #empty>
-        <el-empty description="没有符合条件的用户" />
-      </template>
-    </el-table>
+        <el-table-column v-if="columns.status" label="状态" width="85">
+          <template #default="{ row }">
+            <StatusPlate :tone="statusTone(row.status)">{{ row.status }}</StatusPlate>
+          </template>
+        </el-table-column>
 
-    <el-pagination
-      v-model:current-page="query.pageNum"
-      v-model:page-size="query.pageSize"
-      :total="total"
-      :page-sizes="[10, 20, 50, 100]"
-      layout="total, sizes, prev, pager, next, jumper"
-      class="pagination"
-      @size-change="handleSearch"
-      @current-change="loadList"
-    />
+        <el-table-column
+          v-if="columns.lastLoginTime"
+          label="最后登录"
+          width="165"
+          show-overflow-tooltip
+        >
+          <template #default="{ row }">
+            <span :class="{ muted: !row.lastLoginTime }">
+              {{ row.lastLoginTime ? formatTime(row.lastLoginTime) : '从未登录' }}
+            </span>
+          </template>
+        </el-table-column>
+
+        <el-table-column v-if="columns.createTime" prop="createTime" label="创建时间" width="165" sortable="custom">
+          <template #default="{ row }">{{ formatTime(row.createTime) }}</template>
+        </el-table-column>
+
+        <el-table-column label="操作" width="150" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openDetail(row)">详情</el-button>
+            <!-- 4 个操作平铺太挤，收进下拉 -->
+            <el-dropdown trigger="click" @command="rowCommandHandler(row)">
+              <el-button link type="primary">
+                更多<span class="caret">▾</span>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item v-if="hasPerm('sys:user:edit')" command="edit">编辑</el-dropdown-item>
+                  <el-dropdown-item v-if="hasPerm('sys:user:assign')" command="roles">分配角色</el-dropdown-item>
+                  <el-dropdown-item v-if="hasPerm('sys:user:reset')" command="reset">重置密码</el-dropdown-item>
+                  <el-dropdown-item v-if="hasPerm('sys:user:edit')" command="toggle" divided>
+                    {{ row.status === USER_STATUS.NORMAL ? '停用账号' : '启用账号' }}
+                  </el-dropdown-item>
+                  <el-dropdown-item v-if="hasPerm('sys:user:remove')" command="delete" divided>删除</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </template>
+        </el-table-column>
+
+          <template #empty>
+            <EmptyState title="没有符合条件的用户" desc="换个筛选条件试试，或者直接新增一个" />
+          </template>
+      </el-table>
+
+      <div class="table-pager">
+        <el-pagination
+          v-model:current-page="query.pageNum"
+          v-model:page-size="query.pageSize"
+          :total="total"
+          :page-sizes="[10, 20, 50, 100]"
+          layout="total, sizes, prev, pager, next, jumper"
+          @size-change="handleSearch"
+          @current-change="loadList"
+        />
+      </div>
+    </DataPanel>
 
     <!-- 新增 / 编辑 -->
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="520px">
@@ -795,6 +876,17 @@ onMounted(async () => {
 
         <el-form-item label="手机号" prop="phone">
           <el-input v-model="form.phone" placeholder="选填" maxlength="20" />
+        </el-form-item>
+
+        <el-form-item label="部门">
+          <el-select v-model="form.deptId" placeholder="可暂不分配" clearable style="width: 100%">
+            <el-option
+              v-for="opt in deptOptions"
+              :key="opt.id"
+              :label="opt.label"
+              :value="opt.id"
+            />
+          </el-select>
         </el-form-item>
 
         <el-form-item label="状态" prop="status">
@@ -835,7 +927,11 @@ onMounted(async () => {
         </el-checkbox>
       </el-checkbox-group>
 
-      <el-empty v-if="!roleOptions.length" description="没有可选角色" :image-size="60" />
+      <EmptyState
+        v-if="!roleOptions.length"
+        title="没有可选角色"
+        desc="先去「角色管理」建一个角色，这里才有可选项"
+      />
 
       <template #footer>
         <el-button @click="roleDialogVisible = false">取消</el-button>
@@ -856,9 +952,7 @@ onMounted(async () => {
         <el-descriptions-item label="用户名">{{ detailUser.username }}</el-descriptions-item>
         <el-descriptions-item label="昵称">{{ detailUser.nickname || '—' }}</el-descriptions-item>
         <el-descriptions-item label="状态">
-          <el-tag :type="statusTagType(detailUser.status)" size="small" disable-transitions>
-            {{ detailUser.status }}
-          </el-tag>
+          <StatusPlate :tone="statusTone(detailUser.status)">{{ detailUser.status }}</StatusPlate>
         </el-descriptions-item>
         <el-descriptions-item label="邮箱" :span="2">
           {{ detailUser.email || '—' }}
@@ -866,6 +960,9 @@ onMounted(async () => {
         <el-descriptions-item label="手机号">{{ detailUser.phone || '—' }}</el-descriptions-item>
         <el-descriptions-item label="角色">
           {{ detailUser.roleNames?.join('、') || '未分配' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="部门">
+          {{ deptLabel(detailUser.deptId) }}
         </el-descriptions-item>
         <el-descriptions-item label="创建时间">
           {{ formatTime(detailUser.createTime) }}
@@ -900,17 +997,12 @@ onMounted(async () => {
   margin-bottom: 12px;
 }
 
+/* 搜索行：输入框和按钮排一行，窄屏自动换行 */
 .search-row {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-}
-
-.search-right {
-  margin-left: auto;
-  display: flex;
-  gap: 10px;
 }
 
 .advanced {
@@ -920,7 +1012,7 @@ onMounted(async () => {
   gap: 16px;
   margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px dashed var(--border);
+  border-top: 1px dashed var(--line);
 }
 
 .advanced-item {
@@ -931,7 +1023,7 @@ onMounted(async () => {
 
 .label {
   font-size: 13px;
-  color: #64748b;
+  color: var(--ink-2);
 }
 
 .filter-dot {
@@ -945,9 +1037,9 @@ onMounted(async () => {
   gap: 10px;
   padding: 10px 14px;
   margin-bottom: 12px;
-  border: 1px solid var(--accent-border);
-  border-radius: 6px;
-  background: var(--accent-bg);
+  border: 1px solid var(--signal-line);
+  border-radius: var(--r-panel);
+  background: var(--signal-weak);
 }
 
 .batch-info {
@@ -955,17 +1047,22 @@ onMounted(async () => {
   font-size: 13px;
 }
 
+/* 列显隐按钮：放在表格上方右对齐 */
 .table-tools {
   display: flex;
   justify-content: flex-end;
-  margin-bottom: 8px;
+  padding: var(--sp-3) var(--sp-4) 0;
 }
 
-.pagination {
-  margin-top: 16px;
+/* 分页在面板底部 */
+.table-pager {
+  display: flex;
   justify-content: flex-end;
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--line-soft);
 }
 
+/* 角色铭牌横向排开时留一点间距 */
 .role-tag {
   margin-right: 6px;
 }
@@ -976,7 +1073,7 @@ onMounted(async () => {
 .caret {
   margin-left: 2px;
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--ink-3);
 }
 
 .role-group {
@@ -986,7 +1083,7 @@ onMounted(async () => {
 }
 
 .muted {
-  color: #cbd5e1;
+  color: var(--ink-3);
 }
 
 .detail-tip {

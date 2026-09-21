@@ -58,8 +58,18 @@ public class JwtUtil {
         this.issuer = issuer;
     }
 
-    /** 生成 token。roles 和 nickname 会作为自定义 claim 写进去，拦截器里直接读，不用查库。 */
-    public String generateToken(Long userId, String username, String nickname, Collection<String> roles) {
+    /**
+     * 生成 token。roles / nickname / 是否需改密会作为自定义 claim 写进去，
+     * 拦截器里直接读，不用查库。
+     *
+     * @param mustChangePassword 是否需要强制修改密码。放进 token 是**刻意**的取舍：
+     *                           放进去就不用每个请求都查一次库；
+     *                           代价是这个标记在 token 有效期内（默认 2 小时）不会变。
+     *                           实际影响很小 —— 管理员重置了某个在线用户的密码后，
+     *                           那个用户最多两小时后就会被要求改密。
+     */
+    public String generateToken(Long userId, String username, String nickname,
+                               Collection<String> roles, boolean mustChangePassword) {
         Instant now = Instant.now();
 
         return Jwts.builder()
@@ -68,6 +78,7 @@ public class JwtUtil {
                 .claim("userId", userId)
                 .claim("nickname", nickname)
                 .claim("roles", roles == null ? Set.of() : roles)
+                .claim("pwdChange", mustChangePassword)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusMillis(expireMillis)))
                 .signWith(key)
@@ -93,8 +104,22 @@ public class JwtUtil {
                 readUserId(claims),
                 claims.getSubject(),
                 claims.get("nickname", String.class),
-                readRoles(claims)
+                readRoles(claims),
+                readBoolean(claims, "pwdChange")
         );
+    }
+
+    /**
+     * 读一个布尔 claim。
+     *
+     * <p>老 token 里没有这个 claim（加字段之前签发的），读出来是 null，
+     * 这里统一按 false 处理 —— 意味着**升级后老 token 的用户不会被要求改密**，
+     * 可以用到 token 自然过期。这是有意的：否则升级那一刻，
+     * 所有在线用户会突然被踢去改密码。
+     */
+    private boolean readBoolean(Claims claims, String name) {
+        Object raw = claims.get(name);
+        return raw instanceof Boolean value && value;
     }
 
     public long getExpireSeconds() {

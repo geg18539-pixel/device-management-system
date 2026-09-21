@@ -47,3 +47,9 @@ pnpm-debug.log*
 
 # ---------- Docker 本地数据 ----------
 docker/data/
+
+# ---------- 附件上传目录 ----------
+# 用户上传的设备说明书、照片等，属于运行时数据、不是源码，绝不提交。
+# 默认目录是「运行目录下的 uploads」，后端在 IDEA 里跑就是 backend/backend/uploads
+backend/backend/uploads/
+**/uploads/

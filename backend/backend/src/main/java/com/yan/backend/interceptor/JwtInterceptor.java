@@ -2,14 +2,19 @@ package com.yan.backend.interceptor;
 
 import com.yan.backend.annotation.RequirePerm;
 import com.yan.backend.annotation.RequireRole;
+import com.yan.backend.aspect.OperLogRecorder;
 import com.yan.backend.common.JwtUtil;
 import com.yan.backend.common.LoginUser;
+import com.yan.backend.common.RequestUtils;
 import com.yan.backend.common.UserContext;
+import com.yan.backend.entity.SysOperLog;
 import com.yan.backend.service.PermissionService;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Component;
 import org.springframework.web.method.HandlerMethod;
@@ -28,6 +33,8 @@ import java.util.Set;
 @Component
 public class JwtInterceptor implements HandlerInterceptor {
 
+    private static final Logger log = LoggerFactory.getLogger(JwtInterceptor.class);
+
     private static final String HEADER_NAME = "Authorization";
     private static final String TOKEN_PREFIX = "Bearer ";
 
@@ -43,12 +50,38 @@ public class JwtInterceptor implements HandlerInterceptor {
      */
     private static final String SUPER_ADMIN_ROLE = "admin";
 
+    /**
+     * 「必须先改密码」状态下仍然放行的接口。
+     *
+     * <p>不加这个名单会死循环：拦截器拦下所有请求要求先改密，
+     * 而改密接口本身也被拦，用户就永远出不去。
+     *
+     * <p>{@code /auth/me} 也要放行 —— 前端刷新页面后要知道
+     * "我现在处于必须改密的状态"，否则会显示成一个打不开的空页面。
+     */
+    private static final Set<String> PWD_CHANGE_ALLOWED = Set.of(
+            "/api/auth/me",
+            "/api/auth/change-password");
+
+    /**
+     * 返回给前端的自定义状态码：需要先修改密码。
+     *
+     * <p>用 428（Precondition Required）而不是 403，是为了让前端能把它
+     * 和"真的没有权限"区分开 —— 两者要做的事完全不同：
+     * 前者跳改密页，后者提示无权限。
+     */
+    private static final int SC_PASSWORD_CHANGE_REQUIRED = 428;
+
     private final JwtUtil jwtUtil;
     private final PermissionService permissionService;
+    private final OperLogRecorder operLogRecorder;
 
-    public JwtInterceptor(JwtUtil jwtUtil, PermissionService permissionService) {
+    public JwtInterceptor(JwtUtil jwtUtil,
+                          PermissionService permissionService,
+                          OperLogRecorder operLogRecorder) {
         this.jwtUtil = jwtUtil;
         this.permissionService = permissionService;
+        this.operLogRecorder = operLogRecorder;
     }
 
     @Override
@@ -89,13 +122,25 @@ public class JwtInterceptor implements HandlerInterceptor {
         // 如果先 set 再拒绝，登录信息就会留在当前线程上 ——
         // Tomcat 线程是池化复用的，下一个请求（哪怕是没登录的）会读到上一个用户的信息，
         // 既造成越权，也让 ThreadLocal 无法被 GC。
+        // ★ 强制改密的拦截，同样必须在 UserContext.set() **之前**
+        // （理由同下面的角色校验：preHandle 返回 false 时不会走 afterCompletion，
+        //  先 set 会把登录信息留在池化线程上）
+        if (!isPasswordChangeAllowed(request, loginUser)) {
+            writeError(response, SC_PASSWORD_CHANGE_REQUIRED,
+                    "首次登录或密码已过期，请先修改密码");
+            return false;
+        }
+
+        // 角色校验
         if (!hasRequiredRole(handler, loginUser)) {
+            recordDenied(request, loginUser, "角色不足，缺少接口所需的角色");
             writeError(response, HttpServletResponse.SC_FORBIDDEN, "没有权限执行该操作");
             return false;
         }
 
         // 权限校验同样必须在 UserContext.set() 之前
         if (!hasRequiredPerm(handler, loginUser)) {
+            recordDenied(request, loginUser, "权限不足，缺少接口所需的权限点");
             writeError(response, HttpServletResponse.SC_FORBIDDEN,
                     "没有权限执行该操作，请联系管理员分配相应权限");
             return false;
@@ -112,6 +157,66 @@ public class JwtInterceptor implements HandlerInterceptor {
                                 Exception ex) {
         // 见上面 preHandle 里的说明，这一行不能省
         UserContext.clear();
+    }
+
+    /**
+     * 记录一次被拒绝的越权访问。
+     *
+     * <p><b>为什么必须在这里记，而不是靠 @Log 切面？</b>
+     * 越权请求在拦截器里就被挡回去了，**根本走不到 Controller**，
+     * 而 @Log 切面是包在 Controller 方法外面的 —— 所以这类请求
+     * 在操作日志里一条都不会有。
+     *
+     * <p>但恰恰是这些记录最有审计价值：等保要求能回答"谁在什么时候
+     * 尝试访问过他没有权限的数据"。攻击者或误操作的账号留下的第一条痕迹，
+     * 就是一连串 403。
+     *
+     * <p>写库走异步（{@link OperLogRecorder#saveAsync}），不阻塞响应；
+     * 写失败也不影响拒绝结果本身。
+     */
+    private void recordDenied(HttpServletRequest request, LoginUser loginUser, String reason) {
+        try {
+            SysOperLog entry = new SysOperLog();
+            entry.setTitle("越权访问被拒绝");
+            entry.setBusinessType("OTHER");
+            entry.setRequestMethod(request.getMethod());
+            entry.setRequestUrl(truncateUrl(buildFullUrl(request)));
+            entry.setMethod(request.getRequestURI());
+            entry.setOperatorId(loginUser.userId());
+            entry.setOperatorName(loginUser.username());
+            entry.setIp(RequestUtils.getClientIp());
+            entry.setStatus("失败");
+            entry.setErrorMsg(reason);
+            entry.setCostTime(0L);
+            operLogRecorder.saveAsync(entry);
+        } catch (Exception e) {
+            // 记审计日志失败绝不能影响"拒绝访问"这个结果本身
+            log.warn("记录越权访问失败: {}", e.getMessage());
+        }
+    }
+
+    private String buildFullUrl(HttpServletRequest request) {
+        String url = request.getRequestURI();
+        String query = request.getQueryString();
+        return (query == null || query.isBlank()) ? url : url + "?" + query;
+    }
+
+    /** 表里那一列是 500，超长会被数据库拒绝，先截断 */
+    private String truncateUrl(String url) {
+        return url != null && url.length() > 500 ? url.substring(0, 500) : url;
+    }
+
+    /**
+     * 「必须先改密码」状态下，这个请求能不能过。
+     *
+     * <p>这个检查是**必须的**，不能只靠前端跳转到改密页：
+     * 绕过前端直接调接口就能继续使用系统，那"强制改密"就形同虚设。
+     */
+    private boolean isPasswordChangeAllowed(HttpServletRequest request, LoginUser loginUser) {
+        if (!loginUser.mustChangePassword()) {
+            return true;
+        }
+        return PWD_CHANGE_ALLOWED.contains(request.getRequestURI());
     }
 
     /**
@@ -173,7 +278,7 @@ public class JwtInterceptor implements HandlerInterceptor {
         }
 
         // 超管直接放行，理由见 SUPER_ADMIN_ROLE 的说明
-        if (loginUser.roles() != null && loginUser.roles().contains(SUPER_ADMIN_ROLE)) {
+        if (loginUser.isSuperAdmin()) {
             return true;
         }
 

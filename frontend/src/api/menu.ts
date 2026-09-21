@@ -1,4 +1,5 @@
 import request from '../utils/request'
+import type { PlateTone } from '../utils/plateTone'
 
 /** 菜单类型：M 目录 / F 菜单 / B 按钮（按钮只做权限控制，不出现在侧边栏） */
 export const MENU_TYPE = {
@@ -15,11 +16,11 @@ export const MENU_TYPE_OPTIONS = [
   { label: '按钮', value: MENU_TYPE.BUTTON },
 ]
 
-/** 类型标签的显示文案与配色，菜单管理和角色授权树共用 */
-export const MENU_TYPE_META: Record<string, { label: string; tag: 'primary' | 'success' | 'info' }> = {
-  [MENU_TYPE.DIR]: { label: '目录', tag: 'primary' },
-  [MENU_TYPE.MENU]: { label: '菜单', tag: 'success' },
-  [MENU_TYPE.BUTTON]: { label: '按钮', tag: 'info' },
+/** 类型铭牌的显示文案与语义色，菜单管理和角色授权树共用 */
+export const MENU_TYPE_META: Record<string, { label: string; tone: PlateTone }> = {
+  [MENU_TYPE.DIR]: { label: '目录', tone: 'info' },
+  [MENU_TYPE.MENU]: { label: '菜单', tone: 'ok' },
+  [MENU_TYPE.BUTTON]: { label: '按钮', tone: 'idle' },
 }
 
 /** 对应后端 dto/SysMenuTreeVO.java */

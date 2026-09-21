@@ -19,6 +19,17 @@ const SUCCESS_CODE = 200
 const UNAUTHORIZED = 401
 
 /**
+ * 后端自定义状态码：必须先修改密码。
+ *
+ * <p>故意和 403（真的没有权限）区分开 —— 两者对前端意味着完全不同的动作：
+ * 428 跳改密页，403 提示"没有权限"。
+ */
+const PASSWORD_CHANGE_REQUIRED = 428
+
+/** 改密页路径。已经在改密页时不要再跳，否则会死循环 */
+const CHANGE_PASSWORD_PATH = '/change-password'
+
+/**
  * 登录接口本身在密码错误时也会返回 401。
  * 必须把它排除在"401 就跳登录页"的逻辑之外，否则用户输错密码时
  * 会被反复重定向，什么提示都看不到。
@@ -79,6 +90,13 @@ service.interceptors.response.use(
       return Promise.reject(error)
     }
 
+    // 428 → 必须先改密码。这是流程状态，不是错误，
+    // 所以**不弹错误提示**，直接把人送到改密页
+    if (status === PASSWORD_CHANGE_REQUIRED) {
+      redirectToChangePassword()
+      return Promise.reject(error)
+    }
+
     // 其余错误：网络层问题、5xx、以及登录接口的 401（密码错误）。
     // 后端抛异常时 GlobalExceptionHandler 返回的响应体仍是统一格式，
     // 所以优先用后端给的 message。
@@ -97,6 +115,22 @@ service.interceptors.response.use(
     return Promise.reject(error)
   },
 )
+
+/**
+ * 把用户送到改密页。
+ *
+ * <p>和 handleUnauthorized 一样用 window.location 而不是 router.push：
+ * 既避免 request.ts 反向 import router 造成循环依赖，也顺带清空内存状态。
+ */
+function redirectToChangePassword() {
+  const current = window.location.pathname + window.location.search
+  if (current.startsWith(CHANGE_PASSWORD_PATH)) {
+    // 已经在这个页面上了。再跳会无限刷新，而且改密接口本身返回 428
+    // 也说明后端那边有问题（它本来是放行的）
+    return
+  }
+  window.location.href = `${CHANGE_PASSWORD_PATH}?redirect=${encodeURIComponent(current)}`
+}
 
 /** token 失效时的统一处理：清状态 + 回登录页，并记住原地址便于登录后跳回 */
 function handleUnauthorized() {

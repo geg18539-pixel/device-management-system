@@ -3,6 +3,7 @@ package com.yan.backend.exception;
 import com.yan.backend.common.Result;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
@@ -11,6 +12,8 @@ import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -86,6 +89,80 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * 上传的文件超过了 Spring 的 multipart 上限。
+     *
+     * <p>正常情况下轮不到这里 —— application.yml 里把 multipart 上限设得比
+     * 业务层（app.file.max-size-mb）大，所以超出的是业务层先发现、
+     * 给出的是"最大 10 MB"这种明确提示。
+     *
+     * <p>但配置有可能被改错，而且这个异常不捕获的话会落到兜底分支，
+     * 用户看到的是"服务器内部错误"，完全看不出是文件太大。
+     * 所以还是显式接一下，保证任何情况下提示都是可读的。
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<Result<Void>> handleMaxUploadSize(MaxUploadSizeExceededException ex) {
+        log.warn("上传文件超过 multipart 限制: {}", ex.getMessage());
+
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(Result.failure(413, "上传的文件过大，请压缩后再试"));
+    }
+
+    /**
+     * 上传请求的格式不对（不是 multipart/form-data）。
+     *
+     * <p>不接这个异常的话它会落到兜底分支变成 **500「服务器内部错误」**，
+     * 而实际上这是客户端发错了请求格式 —— 用户看到"服务器内部错误"
+     * 只会以为后端挂了，完全想不到是自己少传了个 Content-Type。
+     *
+     * <p>注意这个 handler 比 {@link #handleMaxUploadSize} 宽泛
+     * （{@code MaxUploadSizeExceededException} 是 {@code MultipartException} 的子类），
+     * Spring 会优先选更具体的那个，所以"文件太大"仍然走 413 的提示。
+     */
+    @ExceptionHandler(MultipartException.class)
+    public ResponseEntity<Result<Void>> handleMultipart(MultipartException ex) {
+        log.warn("上传请求格式不正确: {}", ex.getMessage());
+
+        return ResponseEntity.badRequest()
+                .body(Result.failure(400, "请通过表单上传文件（multipart/form-data）"));
+    }
+
+    /**
+     * 数据库约束被违反。
+     *
+     * <p><b>什么时候会走到这里</b>：业务层防重都是"先查再插"，
+     * 而数据库上还有唯一索引兜底。两者之间有个窗口 ——
+     * 两个请求同时通过预检查、都去插入，第二个必然撞唯一约束。
+     * 另外字段过长、必填项为空、外键不存在这类也都是这个异常。
+     *
+     * <p><b>为什么不能让它落到兜底分支</b>：那样返回的是 500
+     * 「服务器内部错误」，用户以为服务挂了、去重启；
+     * 而且兜底分支会把异常消息原样回显 ——
+     * MySQL 的那句话长这样：
+     * <pre>
+     *   Duplicate entry 'UK-001' for key 'device.UK9ia7b4hpjsdn7b4myie8ejgxu'
+     * </pre>
+     * 约束名、表名、甚至**重复的那个值**全都告诉调用方了，
+     * 等于把库结构送出去。
+     *
+     * <p>所以这里做两件事：**返回 400**（是数据问题不是服务问题），
+     * 并且**只回一句人话，数据库原文只写日志**。
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<Result<Void>> handleDataIntegrityViolation(
+            DataIntegrityViolationException ex) {
+
+        // 日志里留全，包括数据库原文 —— 排查时要靠它定位是哪个约束
+        log.warn("数据违反数据库约束: {}",
+                ex.getMostSpecificCause() == null ? ex.getMessage() : ex.getMostSpecificCause().getMessage());
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(Result.failure(400,
+                        "保存失败：数据不符合数据库约束。常见原因是编号/名称重复、"
+                                + "字段内容过长、或必填项为空。请检查后重试；"
+                                + "具体是哪一个约束，请看后端日志"));
+    }
+
+    /**
      * 兜底处理。
      *
      * <p>注意这里要先把 Spring 自己抛的 HTTP 异常放行，否则会把 404、405
@@ -106,7 +183,15 @@ public class GlobalExceptionHandler {
 
         log.error("未处理的异常", ex);
 
+        // ⚠️ 这里**不回显 ex.getMessage()**。
+        // 走到兜底的都是"没预料到的异常"，它的消息不是写给人看的 ——
+        // 里面有 SQL 片段、表名列名、文件路径、甚至连接串。
+        // 只给一个异常类名（类名不泄露数据），剩下的去看日志。
+        // 真正写给人看的那句话（业务规则、AI 提供方的报错等）都是在
+        // IllegalArgumentException / IllegalStateException 里，
+        // 走上面那个 400 分支，那里的消息是可以回显的。
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Result.failure(500, "服务器内部错误: " + ex.getMessage()));
+                .body(Result.failure(500, "服务器内部错误（" + ex.getClass().getSimpleName()
+                        + "），详细原因见后端日志"));
     }
 }

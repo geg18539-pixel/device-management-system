@@ -1,10 +1,27 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
+    <title>设备管理系统</title>
+    <script>
+      // 在样式生效前把主题类定好，避免刷新时亮暗闪一帧。
+      // 这段必须内联在 head 里 —— 挪到 main.ts 就晚了，
+      // 那时页面已经用默认主题画过一次了。
+      // 键名要和 stores/app.ts 里的 THEME_KEY 保持一致。
+      (function () {
+        try {
+          var saved = localStorage.getItem('dms-theme')
+          var dark = saved
+            ? saved === 'dark'
+            : window.matchMedia('(prefers-color-scheme: dark)').matches
+          if (dark) document.documentElement.classList.add('dark')
+        } catch (e) {
+          // localStorage 被禁用（隐私模式等）时按亮色走，不影响使用
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="app"></div>

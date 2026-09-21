@@ -40,12 +40,34 @@ public class DataInitializer implements CommandLineRunner {
     @Override
     public void run(String... args) {
         seedSafely("RBAC 基础数据", seeder::seedRbacData);
+        // 演示用户要排在 RBAC 之后（它依赖 operator 角色），
+        // 排在演示工单/维保之前（那些数据的负责人要用这些账号当收件人）
+        seedSafely("演示用户", seeder::seedDemoUsers);
         // 菜单与权限点：**每次启动都跑**，靠逐条判断做幂等。
         // 不能加"已经有就整体跳过"的粗粒度开关，否则以后新增的权限点
         // 在老库上永远补不上（这个坑踩过两次了）
         seedSafely("菜单与权限点", seeder::seedMenusAndPerms);
+        // 业务模块的权限点。同样每次启动都跑，靠逐条判断做幂等
+        seedSafely("业务模块权限点", seeder::seedBusinessMenusAndPerms);
+        // 系统参数与字典：都要排在依赖它们的种子数据之前 ——
+        // 演示工单要用「故障类型」字典，报修/看板要读参数
+        seedSafely("系统参数", seeder::seedSystemConfigs);
+        seedSafely("字典数据", seeder::seedDictionaries);
+        // 部门要排在演示设备前面 —— 下面挂设备时得先有部门 id 可查。
+        // 它本身也是逐条幂等的，老库上照样能补齐
+        seedSafely("部门树", seeder::seedDepartments);
         seedSafely("设备分类", seeder::seedDeviceCategories);
         seedSafely("演示设备", seeder::seedDemoDevices);
+        // 维保计划要排在演示设备之后 —— 计划是挂在设备上的，得先有设备
+        seedSafely("演示维保计划", seeder::seedDemoMaintenance);
+        seedSafely("演示配件", seeder::seedDemoSpareParts);
+        // 工单要排在设备之后 —— 工单挂在设备上，而且会把设备状态改成"维修中"
+        seedSafely("演示维修工单", seeder::seedDemoRepairs);
+        // 数据修补必须放在最后：它负责回填 ddl-auto=update 新增列留下的 NULL，
+        // 得等前面几块把数据都插完了才有意义
+        seedSafely("历史数据修补", seeder::repairExistingData);
+        // 初始密码标记。放在修补之后，因为要读已经建好的账号
+        seedSafely("初始密码标记", seeder::repairDefaultPasswords);
     }
 
     /**

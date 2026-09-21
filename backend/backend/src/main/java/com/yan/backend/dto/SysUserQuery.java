@@ -17,6 +17,9 @@ public class SysUserQuery {
     /** 按角色筛选 */
     private Long roleId;
 
+    /** 按所属部门筛选 */
+    private Long deptId;
+
     /** 按状态筛选：正常 / 停用 */
     private String status;
 
@@ -50,6 +53,14 @@ public class SysUserQuery {
 
     public void setRoleId(Long roleId) {
         this.roleId = roleId;
+    }
+
+    public Long getDeptId() {
+        return deptId;
+    }
+
+    public void setDeptId(Long deptId) {
+        this.deptId = deptId;
     }
 
     public String getStatus() {

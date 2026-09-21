@@ -1,9 +1,14 @@
 package com.yan.backend.controller;
 
+import com.yan.backend.ai.provider.AiProviderRegistry;
+import com.yan.backend.ai.provider.EmbeddingProvider;
+import com.yan.backend.ai.provider.LlmProvider;
 import com.yan.backend.common.Result;
 import com.yan.backend.dto.AiChatRequest;
 import com.yan.backend.dto.AiModelsVO;
+import com.yan.backend.dto.AiStatusVO;
 import com.yan.backend.service.AiChatService;
+import com.yan.backend.service.AiSettingsService;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -11,20 +16,25 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 本地 AI 助手（对接 Ollama）。
+ * AI 助手。
+ *
+ * <p>支持两种提供方：**本机 Ollama**（原生接口）和**任意 OpenAI 兼容服务**
+ * （DeepSeek、通义千问兼容模式、Kimi、智谱、硅基流动、vLLM、LM Studio 等）。
+ * 具体用哪一家由「系统设置 → AI 模型」决定，这里是提供方无关的。
  *
  * <p>路径在 {@code /api/**} 下，所以和其他接口一样需要登录 —— 由 JwtInterceptor 统一把关。
  *
  * <p><b>这里刻意没有加 @Log 注解。</b>
- * 聊天方法是"立刻返回一个 StreamingResponseBody"的：真正调用模型、读取流、
- * 写响应这些事都发生在方法返回**之后**的异步线程里。
- * 如果加 @Log，切面记录到的耗时几乎为 0、状态永远是"成功"，
+ * 聊天方法是"立刻返回"的：真正调用模型、读取流、写响应这些事都发生在
+ * 方法返回**之后**。如果加 @Log，切面记录到的耗时几乎为 0、状态永远是"成功"，
  * 哪怕模型根本没连上 —— 那是一条会误导人的审计记录，还不如不记。
  * 真正的调用情况在 AiChatServiceImpl 的日志里（开始/结束/耗时/失败原因）。
  */
@@ -33,9 +43,64 @@ import java.util.List;
 public class AiController {
 
     private final AiChatService aiChatService;
+    private final AiProviderRegistry providerRegistry;
+    private final AiSettingsService aiSettings;
 
-    public AiController(AiChatService aiChatService) {
+    public AiController(AiChatService aiChatService,
+                        AiProviderRegistry providerRegistry,
+                        AiSettingsService aiSettings) {
         this.aiChatService = aiChatService;
+        this.providerRegistry = providerRegistry;
+        this.aiSettings = aiSettings;
+    }
+
+    /**
+     * GET /api/ai/status —— 当前生效的 AI 配置摘要（脱敏）。
+     *
+     * <p>返回的是**生效值**而不是"库里的字面值"：界面上要显示的是实际在用哪一家、
+     * 哪个地址、哪个模型。provider / base-url / model 这三项都可能是
+     * "库里没配、跟着配置文件或环境变量走"，管理员更需要看到最终结果。
+     *
+     * <p>**不含 API Key**，只有一个"配没配"的布尔值。
+     *
+     * <p>不做探活：连不上是几秒到几十秒的事，不该让打开设置页变成一次等待。
+     * 探活走 {@link #models(String)}。
+     */
+    @GetMapping("/status")
+    public ResponseEntity<Result<AiStatusVO>> status() {
+        AiStatusVO vo = new AiStatusVO();
+
+        List<AiStatusVO.Option> options = new ArrayList<>();
+        for (LlmProvider provider : providerRegistry.allLlm()) {
+            options.add(new AiStatusVO.Option(provider.id(), provider.label()));
+        }
+        // 嵌入提供方的可选集和对话是同一批（两家都同时提供对话和嵌入），不另开一个列表
+        vo.setProviders(options);
+
+        LlmProvider chat = providerRegistry.currentLlm();
+        AiStatusVO.ProviderStatus chatStatus = new AiStatusVO.ProviderStatus();
+        chatStatus.setProvider(chat.id());
+        chatStatus.setProviderLabel(chat.label());
+        chatStatus.setBaseUrl(aiSettings.chatBaseUrl());
+        chatStatus.setModel(aiSettings.chatModel());
+        chatStatus.setApiKeyConfigured(hasText(aiSettings.chatApiKey()));
+        chatStatus.setSupportsTools(chat.supportsTools());
+        vo.setChat(chatStatus);
+
+        EmbeddingProvider embedding = providerRegistry.currentEmbedding();
+        AiStatusVO.ProviderStatus embeddingStatus = new AiStatusVO.ProviderStatus();
+        embeddingStatus.setProvider(embedding.id());
+        embeddingStatus.setProviderLabel(embedding.label());
+        embeddingStatus.setBaseUrl(aiSettings.embeddingBaseUrl());
+        embeddingStatus.setModel(embedding.modelName());
+        embeddingStatus.setApiKeyConfigured(hasText(aiSettings.embeddingApiKey()));
+        vo.setEmbedding(embeddingStatus);
+
+        return ResponseEntity.ok(Result.success(vo));
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     /**
@@ -76,15 +141,24 @@ public class AiController {
     }
 
     /**
-     * GET /api/ai/models —— 列出 Ollama 已安装的模型。
+     * GET /api/ai/models —— 列出当前提供方下可用的模型。
      *
-     * <p>顺带充当连通性检查：前端进页面时调一次，
-     * 拿不到就说明 Ollama 没启动，可以直接给出提示而不是等用户发消息才报错。
+     * <p>顺带充当**连通性检查**：设置页的「测试连接」和 AI 助手页进页面时各调一次。
+     * 拿不到就说明提供方连不上（或密钥不对），可以直接给出提示，
+     * 而不是等用户发消息才报错。
+     *
+     * <p>{@code purpose=chat|embedding} 决定查哪一边 —— 两边可以接不同的提供方，
+     * 所以要分别测。失败时抛出的异常里已经写清了是哪一家、哪个地址、
+     * 要不要配 API Key，这里不吞不包。
      */
     @GetMapping("/models")
-    public ResponseEntity<Result<AiModelsVO>> models() {
-        List<String> models = aiChatService.listModels();
-        return ResponseEntity.ok(Result.success(
-                new AiModelsVO(models, aiChatService.getDefaultModel())));
+    public ResponseEntity<Result<AiModelsVO>> models(
+            @RequestParam(defaultValue = "chat") String purpose) {
+        boolean embedding = "embedding".equalsIgnoreCase(purpose);
+        List<String> models = embedding
+                ? providerRegistry.currentEmbedding().listModels()
+                : providerRegistry.currentLlm().listModels();
+        String current = embedding ? aiSettings.embeddingModel() : aiSettings.chatModel();
+        return ResponseEntity.ok(Result.success(new AiModelsVO(models, current)));
     }
 }

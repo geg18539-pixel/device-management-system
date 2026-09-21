@@ -84,8 +84,33 @@ services:
       # 容器内的 localhost 指容器自己，所以必须用 host.docker.internal ——
       # 这是 Docker Desktop 提供的一个特殊域名，解析到宿主机的地址。
       # （Linux 上原生 Docker 需要给 backend 加 extra_hosts 映射，Windows/Mac 不用。）
-      OLLAMA_BASE_URL: http://host.docker.internal:11434
-      OLLAMA_MODEL: qwen2.5:3b
+      #
+      # ⚠️ 变量名跟着配置结构改过：以前是 OLLAMA_BASE_URL / OLLAMA_MODEL，
+      # 现在按用途分成了 chat / embedding 两组（两组可以接不同的提供方）。
+      # 用旧名字不会报错，只会**静默地用回默认值 localhost:11434** ——
+      # 而容器里的 localhost 连不上宿主机，表现是"AI 功能全部连不上，
+      # 但环境变量明明写了"。
+      AI_CHAT_BASE_URL: http://host.docker.internal:11434
+      AI_CHAT_MODEL: qwen2.5:3b
+      # 嵌入模型走同一个地址。**这个模型不在 Ollama 默认安装里**，
+      # 需要先在宿主机上执行：ollama pull nomic-embed-text
+      AI_EMBED_BASE_URL: http://host.docker.internal:11434
+      AI_EMBED_MODEL: nomic-embed-text
+      # 用云端 API 时在这里注入密钥（不要写进 application.yml 后提交）：
+      #   AI_CHAT_PROVIDER: openai
+      #   AI_CHAT_API_KEY: sk-xxxx
+      #   AI_CHAT_BASE_URL: https://api.deepseek.com
+      #   AI_CHAT_MODEL: deepseek-chat
+      # 附件存放目录。显式指定成绝对路径，不要依赖"运行目录"——
+      # 镜像里 WORKDIR 是 /app，写死路径能让下面的卷映射一目了然，
+      # 也避免以后改了 WORKDIR 导致文件和卷对不上。
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      # ★ 附件必须挂成卷。
+      # 不挂的话文件只存在于容器可写层里，容器一重建（docker compose up --build）
+      # 上传的说明书、照片就全没了，而数据库里的记录还在 ——
+      # 表现是"附件列表有记录、点下载报文件不存在"。
+      - uploads_data:/app/uploads
     ports:
       # 暴露到宿主机是为了方便直接用 Postman / curl 调接口，
       # 前端其实是通过 Compose 内部网络访问 backend:8080，不走这个端口。
@@ -110,6 +135,8 @@ services:
 
 volumes:
   mysql_data:
+  # 附件文件卷。和 mysql_data 一样是命名卷，docker compose down -v 会一起删掉
+  uploads_data:
 
 networks:
   # 显式声明一个 bridge 网络。
