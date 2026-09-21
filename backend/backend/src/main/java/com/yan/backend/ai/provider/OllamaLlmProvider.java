@@ -4,6 +4,7 @@ import com.yan.backend.service.AiSettingsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
@@ -18,6 +19,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -74,7 +76,29 @@ public class OllamaLlmProvider implements LlmProvider {
         if (request.hasTools()) {
             payload.put("tools", request.tools());
         }
+        putThink(payload, request.think());
 
+        // 记下"有没有真的往调用方写过东西"：已经发给下游的字节收不回来，
+        // 那种情况下不能重试，否则用户会看到两遍开头
+        boolean[] emitted = {false};
+        Consumer<String> guarded = chunk -> {
+            emitted[0] = true;
+            onText.accept(chunk);
+        };
+
+        try {
+            return doStreamRound(payload, guarded);
+        } catch (Exception ex) {
+            if (canRetryWithoutThink(ex, emitted[0], payload)) {
+                log.warn("该服务不接受 think 参数，已去掉它重试一次：{}", ex.getMessage());
+                return doStreamRound(payload, guarded);
+            }
+            throw wrap(ex);
+        }
+    }
+
+    /** 真正跑一轮流式对话。抽出来是为了让"去掉 think 重试一次"能复用同一段代码 */
+    private LlmRoundResult doStreamRound(Map<String, Object> payload, Consumer<String> onText) {
         StringBuilder text = new StringBuilder();
         // 按 index 归并：一次工具调用的 name 和 arguments 可能分散在不同分片里
         Map<Integer, Map<String, Object>> callsByIndex = new LinkedHashMap<>();
@@ -85,7 +109,10 @@ public class OllamaLlmProvider implements LlmProvider {
                     .contentType(MediaType.APPLICATION_JSON)
                     .accept(MediaType.APPLICATION_NDJSON, MediaType.APPLICATION_JSON)
                     .body(payload)
-                    .exchange((req, res) -> relay(res.getBody(), onText, text, callsByIndex));
+                    .exchange((req, res) -> {
+                        checkErrorStatus(res);
+                        return relay(res.getBody(), onText, text, callsByIndex);
+                    });
         } catch (Exception ex) {
             throw wrap(ex);
         }
@@ -210,7 +237,21 @@ public class OllamaLlmProvider implements LlmProvider {
         payload.put("options", Map.of(
                 "temperature", request.temperature(),
                 "num_predict", request.maxTokens()));
+        putThink(payload, request.think());
 
+        try {
+            return doStructured(payload);
+        } catch (Exception ex) {
+            // 非流式，没有"已经写出去"的问题，可以放心重试
+            if (canRetryWithoutThink(ex, false, payload)) {
+                log.warn("该服务不接受 think 参数，已去掉它重试一次：{}", ex.getMessage());
+                return doStructured(payload);
+            }
+            throw wrap(ex);
+        }
+    }
+
+    private String doStructured(Map<String, Object> payload) {
         try {
             JsonNode response = client().post()
                     .uri("/api/chat")
@@ -223,6 +264,77 @@ public class OllamaLlmProvider implements LlmProvider {
         } catch (Exception ex) {
             throw wrap(ex);
         }
+    }
+
+    // ============================================================
+    // think 参数
+    // ============================================================
+
+    /**
+     * HTTP 状态是 4xx/5xx 时抛一个**带上了响应体**的异常。
+     *
+     * <p>⚠️ 这一步是必须的，而且踩过一次：流式用的是
+     * {@code RestClient.exchange()}，它**不会因为错误状态码抛异常** ——
+     * 不自己检查的话，错误响应的那段 JSON（形如
+     * {@code {"error":"..."}}）会被当成 NDJSON 逐行解析，
+     * 一行都解析不出 content，最后表现为<b>"模型一个字都没说"</b>。
+     *
+     * <p>真实原因（参数不被支持、模型没拉下来、地址填错…）全被吞掉，
+     * 用户看到的只有一句"模型没有返回任何内容"，完全没法排查。
+     * 把响应体带上之后，日志和前端提示里就能看到服务端到底说了什么。
+     */
+    private void checkErrorStatus(ClientHttpResponse res) throws IOException {
+        if (!res.getStatusCode().isError()) {
+            return;
+        }
+        String detail = "";
+        try (InputStream in = res.getBody()) {
+            detail = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            // 别把一整页 HTML 塞进异常消息里
+            if (detail.length() > 500) {
+                detail = detail.substring(0, 500) + "…";
+            }
+        } catch (Exception ignored) {
+            // 读不出响应体不影响判断，只要知道它失败了就行
+        }
+        throw new IllegalStateException(
+                "模型服务返回 " + res.getStatusCode().value() + "：" + detail);
+    }
+
+    /**
+     * 按需把 {@code think} 放进请求体。
+     *
+     * <p><b>值为 null 时什么都不放</b>：老版本 Ollama 和不支持思考的模型
+     * 收到这个字段可能直接报错，所以"不指定"和"指定为 false"是两件事。
+     */
+    private void putThink(Map<String, Object> payload, Boolean think) {
+        if (think != null) {
+            payload.put("think", think);
+        }
+    }
+
+    /**
+     * 这次失败是不是"服务端不认 think"造成的，能不能去掉它重试。
+     *
+     * <p>判据是异常链里出现 {@code think} 字样。**故意做得宽松**：
+     * 误判的代价只是多发一次请求（去掉一个可选的字段而已），
+     * 而漏判的代价是用户彻底用不了 —— 所以宁可误判。
+     *
+     * <p>{@code emitted} 为 true 时一律不重试：流式场景下已经发给下游的
+     * 字节收不回来，重试会让用户看到两遍开头。
+     */
+    private boolean canRetryWithoutThink(Throwable ex, boolean emitted, Map<String, Object> payload) {
+        if (emitted || !payload.containsKey("think")) {
+            return false;
+        }
+        for (Throwable t = ex; t != null; t = t.getCause()) {
+            String msg = t.getMessage();
+            if (msg != null && msg.toLowerCase(Locale.ROOT).contains("think")) {
+                payload.remove("think");
+                return true;
+            }
+        }
+        return false;
     }
 
     // ============================================================

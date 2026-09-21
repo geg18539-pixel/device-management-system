@@ -135,6 +135,26 @@ public class AiSettingsService {
         return properties.getChat().getDigestMaxTokens();
     }
 
+    /**
+     * 要不要让模型先思考再回答。
+     *
+     * <p>⚠️ 这里**刻意不直接用 {@code getBoolean}**：那一套的语义是
+     * "解析不了就回退默认值**并打一条警告**"，而我们的种子值故意是空串
+     * （和 provider / base-url / model 一样，表示"不覆盖，跟随配置文件/环境变量"）——
+     * 空串在 {@code getBoolean} 眼里就是"解析失败"，于是每次读都会刷一条警告，
+     * 而"没配"在这里是完全正常的状态。
+     *
+     * <p>所以自己读原始字符串判空，规则和其它 AI 配置项保持一致：
+     * **库里为空 → 用配置文件/环境变量的值；填了 → 覆盖。**
+     */
+    public boolean chatThinking() {
+        String raw = configService.getString(ConfigKeys.AI_CHAT_THINKING, "");
+        if (raw != null && !raw.isBlank()) {
+            return Boolean.parseBoolean(raw.trim());
+        }
+        return properties.getChat().isThinking();
+    }
+
     // ============================================================
     // 嵌入
     // ============================================================

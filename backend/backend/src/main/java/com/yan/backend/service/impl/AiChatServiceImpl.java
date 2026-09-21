@@ -96,7 +96,10 @@ public class AiChatServiceImpl implements AiChatService {
         try {
             for (int round = 1; round <= maxRounds; round++) {
                 ChatRequest request = new ChatRequest(model, chat, tools,
-                        settings.chatTemperature(), settings.chatMaxTokens());
+                        settings.chatTemperature(), settings.chatMaxTokens(),
+                        // 由系统参数 ai.chat.thinking 决定。默认关：思考能提升一点质量，
+                        // 但会慢好几倍，而对话是用户在前端干等着的场景
+                        settings.chatThinking());
 
                 LlmRoundResult result = provider.streamRound(request,
                         chunk -> write(outputStream, chunk));

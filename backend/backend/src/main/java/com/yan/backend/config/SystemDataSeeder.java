@@ -1326,21 +1326,28 @@ public class SystemDataSeeder {
                 "对话随机度", group, SysConfig.TYPE_NUMBER, 4,
                 "0 最确定、1 最随机。小模型建议 0.5~0.8，太高会开始胡言乱语");
 
+        created += ensureConfig(ConfigKeys.AI_CHAT_THINKING,
+                ConfigKeys.AI_CHAT_THINKING_DEFAULT,
+                "先思考再回答", group, SysConfig.TYPE_BOOLEAN, 5,
+                "让模型把推理过程先走一遍再给答案。质量可能好一点，但**慢好几倍**。"
+                        + "只对 Ollama 原生接口生效；换成 OpenAI 兼容提供方后这个开关会失效。"
+                        + "留空表示用配置文件里的值");
+
         created += ensureConfig(ConfigKeys.AI_EMBEDDING_PROVIDER,
                 ConfigKeys.AI_EMBEDDING_PROVIDER_DEFAULT,
-                "嵌入提供方", group, SysConfig.TYPE_STRING, 5,
+                "嵌入提供方", group, SysConfig.TYPE_STRING, 6,
                 "可以和对话用不同的提供方 —— 嵌入量大、按量计费不划算，"
                         + "本机跑往往更合适");
 
         created += ensureConfig(ConfigKeys.AI_EMBEDDING_BASE_URL,
                 ConfigKeys.AI_EMBEDDING_BASE_URL_DEFAULT,
-                "嵌入服务地址", group, SysConfig.TYPE_STRING, 6,
+                "嵌入服务地址", group, SysConfig.TYPE_STRING, 7,
                 "和对话的格式一样，要填到版本段为止。留空表示用配置文件/环境变量里的值。"
                         + "本机 Ollama 用 http://localhost:11434（走它的原生嵌入接口，不带 /v1）");
 
         created += ensureConfig(ConfigKeys.AI_EMBEDDING_MODEL,
                 ConfigKeys.AI_EMBEDDING_MODEL_DEFAULT,
-                "嵌入模型", group, SysConfig.TYPE_STRING, 7,
+                "嵌入模型", group, SysConfig.TYPE_STRING, 8,
                 "⚠️ 换模型会让已入库的向量全部失效，需要对每份文档点一次「重新处理」。"
                         + "本机 Ollama 用 nomic-embed-text（要单独 ollama pull，约 270MB）；"
                         + "硅基流动可用 BAAI/bge-m3");

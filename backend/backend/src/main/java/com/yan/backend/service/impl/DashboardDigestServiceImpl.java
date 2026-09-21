@@ -222,8 +222,11 @@ public class DashboardDigestServiceImpl implements DashboardDigestService {
                 ChatMessage.system(SYSTEM_PROMPT),
                 ChatMessage.user(buildDataBlock(stats)));
 
+        // ⚠️ 和故障分析同理，这里也**固定关掉思考**：摘要的 maxTokens 只有 300，
+        // 而它的任务只是"把看板上已经算好的数字组织成人话"，没有需要推理的东西。
+        // 让会思考的模型跑这个，它会把预算全花在中间过程上，最后交不出摘要
         ChatRequest request = ChatRequest.plain(model, messages,
-                aiSettings.digestTemperature(), aiSettings.digestMaxTokens());
+                aiSettings.digestTemperature(), aiSettings.digestMaxTokens(), Boolean.FALSE);
 
         // 这里传一个空回调：摘要是缓存起来一次性给前端的，不需要流式。
         // 但 LlmProvider 只有流式这一个"拿文本"的入口，所以把片段丢掉、用返回值 ——

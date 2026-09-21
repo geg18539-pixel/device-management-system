@@ -176,6 +176,15 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '智能故障诊断', roles: ['admin', 'operator'] },
   },
   {
+    // 数据问答（自然语言问数）。所有角色都能用 —— 它能查到的设备/工单/配件数据
+    // 本来就在那些页面上对所有登录用户可见；后端 /api/query/** 也只要求登录。
+    // 真正守住的是"不碰系统数据"：查询目录里根本没有用户/角色/菜单
+    path: '/query',
+    name: 'DataQuery',
+    component: () => import('../views/DataQueryView.vue'),
+    meta: { title: '数据问答', roles: ['admin', 'operator'] },
+  },
+  {
     // 兜底：访问不存在的路径时回到首页看板
     path: '/:pathMatch(.*)*',
     redirect: '/dashboard',

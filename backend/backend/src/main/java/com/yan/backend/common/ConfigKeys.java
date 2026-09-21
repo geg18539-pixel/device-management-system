@@ -145,6 +145,26 @@ public final class ConfigKeys {
     public static final String AI_CHAT_TEMPERATURE = "ai.chat.temperature";
     public static final String AI_CHAT_TEMPERATURE_DEFAULT = "0.7";
 
+    /**
+     * 要不要让模型**先思考再回答**（Ollama 的 {@code think} 参数）。
+     *
+     * <p>⚠️ <b>只对本机 Ollama 生效</b>：OpenAI 兼容提供方不读这个字段，
+     * 切过去之后这个开关会失效，而界面上看不出来（原因见 OpenAI 提供方的类注释）。
+     *
+     * <p><b>默认关</b>，理由是实测出来的取舍：思考能把回答质量往上抬一点，
+     * 但会把时间拉长好几倍。而这个系统里的 AI 调用大多是
+     * "把已有资料组织成人话"（摘要、故障分析），不是需要反复推敲的开放问题 ——
+     * 何况 4B 这种规模的模型，思考带来的增益本身就有限。
+     * 觉得回答不够好的话，打开它试试就行。
+     *
+     * <p>⚠️ 种子值刻意是**空串**，和 provider / base-url / model 那几项一样：
+     * 空 = "不覆盖，跟随配置文件 / 环境变量"。种成 {@code "false"} 的话，
+     * Docker 里注入的 {@code AI_CHAT_THINKING=true} 会被库里的值悄悄盖掉，
+     * 而管理员在界面上完全看不出为什么改环境变量不生效 —— 这个坑 N 批踩过一次。
+     */
+    public static final String AI_CHAT_THINKING = "ai.chat.thinking";
+    public static final String AI_CHAT_THINKING_DEFAULT = "";
+
     /** 嵌入提供方。对应 app.ai.embedding.provider。留空表示跟随配置文件 */
     public static final String AI_EMBEDDING_PROVIDER = "ai.embedding.provider";
     public static final String AI_EMBEDDING_PROVIDER_DEFAULT = "";

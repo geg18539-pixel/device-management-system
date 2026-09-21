@@ -385,7 +385,8 @@ public class DiagnosisServiceImpl implements DiagnosisService {
                         ChatMessage.user(buildPrompt(context))),
                 // 诊断要的是稳定结论，不是创意
                 settings.diagnosisTemperature(),
-                settings.diagnosisMaxTokens());
+                settings.diagnosisMaxTokens(),
+                settings.chatThinking());
 
         long start = System.currentTimeMillis();
         log.info("故障诊断开始：提供方={}, 设备={}, 知识库命中={}, 相似工单={}, 建议备件={}",

@@ -5,6 +5,7 @@ import com.yan.backend.entity.Device;
 import com.yan.backend.entity.DeviceCategory;
 import com.yan.backend.ai.provider.AiProviderRegistry;
 import com.yan.backend.ai.provider.ChatMessage;
+import com.yan.backend.ai.StructuredJson;
 import com.yan.backend.ai.provider.LlmProvider;
 import com.yan.backend.ai.provider.StructuredRequest;
 import com.yan.backend.entity.DeviceRepair;
@@ -18,7 +19,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -55,20 +55,20 @@ public class AiFaultAnalysisServiceImpl implements AiFaultAnalysisService {
 
     private final AiProviderRegistry providerRegistry;
     private final AiSettingsService settings;
-    private final ObjectMapper objectMapper;
+    private final StructuredJson structuredJson;
     private final DeviceRepairRepository deviceRepairRepository;
     private final DeviceRepository deviceRepository;
     private final DeviceCategoryRepository deviceCategoryRepository;
 
     public AiFaultAnalysisServiceImpl(AiProviderRegistry providerRegistry,
                                       AiSettingsService settings,
-                                      ObjectMapper objectMapper,
+                                      StructuredJson structuredJson,
                                       DeviceRepairRepository deviceRepairRepository,
                                       DeviceRepository deviceRepository,
                                       DeviceCategoryRepository deviceCategoryRepository) {
         this.providerRegistry = providerRegistry;
         this.settings = settings;
-        this.objectMapper = objectMapper;
+        this.structuredJson = structuredJson;
         this.deviceRepairRepository = deviceRepairRepository;
         this.deviceRepository = deviceRepository;
         this.deviceCategoryRepository = deviceCategoryRepository;
@@ -156,7 +156,14 @@ public class AiFaultAnalysisServiceImpl implements AiFaultAnalysisService {
                         ChatMessage.user(userPrompt)),
                 buildJsonSchema(),
                 settings.analysisTemperature(),
-                settings.analysisMaxTokens());
+                settings.analysisMaxTokens(),
+                // ⚠️ 这条路径上**永远关掉思考**，不跟 ai.chat.thinking 走。
+                // 原因是技术性的、不是偏好：下面用 format 传了 JSON Schema，
+                // 而 maxTokens 只有 800 —— 会思考的模型很可能把整个预算花在
+                // 中间推理上，最后交不出 JSON（或者交一个被截断的），
+                // 表现为"AI 分析完成但结果是空的"，而且不报错。
+                // 结构化输出要的是"把已有信息填进给定结构"，本来也不需要推理
+                Boolean.FALSE);
 
         // ⚠️ 提供方**不保证**返回的一定是干净 JSON：各家的结构化输出支持程度差别很大
         // （原生 Ollama 能强约束、OpenAI 有 json_object、还有些服务直接忽略这个参数）。
@@ -166,67 +173,13 @@ public class AiFaultAnalysisServiceImpl implements AiFaultAnalysisService {
             throw new IllegalStateException("模型返回内容为空");
         }
 
-        JsonNode parsed = extractJson(content);
+        JsonNode parsed = structuredJson.extract(content);
 
         return new AiFaultAnalysisResult(
                 normalizeSeverity(parsed.path("severity").asString()),
                 toStringList(parsed.path("possibleCauses")),
                 toStringList(parsed.path("suggestedSteps")),
                 toDecimal(parsed.path("estimatedHours")));
-    }
-
-    /**
-     * 从模型返回的文本里抠出 JSON 对象。
-     *
-     * <p>三层兜底，因为"结构化输出"这件事**没有跨厂商的统一保证**：
-     * <ol>
-     *   <li>直接解析 —— 支持约束的提供方（原生 Ollama / OpenAI）会走到这一步；</li>
-     *   <li>去掉 {@code ```json} 代码围栏再解析 —— 模型习惯性地包一层，很常见；</li>
-     *   <li>取文本里第一个 {@code &#123;} 到最后一个 {@code &#125;} 之间的内容 ——
-     *       模型絮絮叨叨说了一堆再给 JSON 时靠这个救回来。</li>
-     * </ol>
-     * 三层都失败才报错。相比"假定返回的一定是 JSON"，这里多写十几行，
-     * 换来的是**换一个提供方不用改代码**。
-     */
-    private JsonNode extractJson(String content) {
-        String text = content.strip();
-
-        JsonNode direct = tryParse(text);
-        if (direct != null) {
-            return direct;
-        }
-
-        if (text.startsWith("```")) {
-            int firstNewline = text.indexOf('\n');
-            int lastFence = text.lastIndexOf("```");
-            if (firstNewline > 0 && lastFence > firstNewline) {
-                JsonNode unfenced = tryParse(text.substring(firstNewline + 1, lastFence).strip());
-                if (unfenced != null) {
-                    return unfenced;
-                }
-            }
-        }
-
-        int start = text.indexOf('{');
-        int end = text.lastIndexOf('}');
-        if (start >= 0 && end > start) {
-            JsonNode embedded = tryParse(text.substring(start, end + 1));
-            if (embedded != null) {
-                return embedded;
-            }
-        }
-
-        throw new IllegalStateException("模型返回的不是合法 JSON：" + truncate(content, 200));
-    }
-
-    private JsonNode tryParse(String text) {
-        try {
-            JsonNode node = objectMapper.readTree(text);
-            // readTree 对 "" 之类的输入会返回 null 而不是抛异常，这里一并挡掉
-            return node != null && node.isObject() ? node : null;
-        } catch (Exception ex) {
-            return null;
-        }
     }
 
     /** JSON Schema：约束模型必须返回这四个字段，且类型正确 */

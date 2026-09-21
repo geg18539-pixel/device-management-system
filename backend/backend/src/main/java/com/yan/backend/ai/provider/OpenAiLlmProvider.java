@@ -46,6 +46,17 @@ import java.util.function.Consumer;
  *       遇到"不认这个参数"的报错就**去掉它重试** —— 反正调用方本来就要
  *       从文本里再抠一次 JSON（见 {@link LlmProvider#structured} 的约定）。</li>
  * </ol>
+ *
+ * <h3>⚠️ {@code think} 这个参数在这里被<u>有意忽略</u></h3>
+ *
+ * <p>{@code think} 是 <b>Ollama 原生接口的特性</b>（见 {@link ChatRequest#think}），
+ * OpenAI 兼容协议里没有这个字段，所以这个实现**根本不读它**。
+ *
+ * <p>后果要说清楚：把提供方从 ollama 换成 openai（比如换成通义千问的兼容模式）之后，
+ * 「先思考再回答」这个开关就**失效了** —— 而它是会生效还是失效，界面上看不出来。
+ * 各家其实都有自己的写法（通义是 {@code enable_thinking}、DeepSeek 是
+ * {@code reasoning_content} 那一套），但各不相同，等真有人需要时再按家适配，
+ * 不要在这里拍脑袋塞一个猜的名字 —— 那只会变成第二种静默失效。
  */
 @Component
 public class OpenAiLlmProvider implements LlmProvider {

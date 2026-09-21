@@ -92,6 +92,15 @@ public class AiProperties {
         private int digestMaxTokens = 300;
 
         /**
+         * 要不要让模型先思考再回答（Ollama 的 {@code think} 参数）。
+         *
+         * <p>这个是**默认值**，会被系统参数 {@code ai.chat.thinking} 覆盖 ——
+         * 真正取生效值请走 {@code AiSettingsService.chatThinking()}。
+         * 默认关的理由见 {@code ConfigKeys.AI_CHAT_THINKING} 的说明。
+         */
+        private boolean thinking = false;
+
+        /**
          * 最多允许模型"查几次数据库"。
          *
          * <p>小模型可能反复要求调工具，不设上限会陷入死循环、
@@ -212,6 +221,14 @@ public class AiProperties {
 
         public void setDigestMaxTokens(int digestMaxTokens) {
             this.digestMaxTokens = digestMaxTokens;
+        }
+
+        public boolean isThinking() {
+            return thinking;
+        }
+
+        public void setThinking(boolean thinking) {
+            this.thinking = thinking;
         }
 
         public int getMaxToolRounds() {

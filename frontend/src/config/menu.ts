@@ -73,6 +73,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     items: [
       { path: '/ai', title: 'AI 助手', icon: 'i-spark', roles: ALL_ROLES },
       { path: '/diagnosis', title: '智能故障诊断', icon: 'i-diagnosis', roles: ALL_ROLES },
+      { path: '/query', title: '数据问答', icon: 'i-query', roles: ALL_ROLES },
       { path: '/knowledge', title: '设备知识库', icon: 'i-knowledge', roles: ['admin'] },
     ],
   },
