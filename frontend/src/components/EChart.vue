@@ -30,6 +30,19 @@ const props = withDefaults(
   { height: '260px' },
 )
 
+/**
+ * 图形被点击时，把**被点中的数据项的 id** 透出去。
+ *
+ * <p>刻意只透一个 id、不透整个 ECharts 的 params：params 是个跨所有图表类型的
+ * 大联合类型，页面拿到它还得自己判断"这是饼图的扇区还是关系图的节点"。
+ * 一个 id 足够让页面把它映射回自己的数据，语义的解釋留在页面那边 ——
+ * 这个组件坚持"只管把 option 画出来"。
+ *
+ * <p>数据项没有 {@code id} 时（饼图、柱状图通常只写 name）会是 undefined，
+ * 页面自己决定这种情况要不要处理。
+ */
+const emit = defineEmits<{ 'item-click': [id: string | undefined] }>()
+
 const el = ref<HTMLDivElement>()
 
 // 用普通变量而不是 ref：ECharts 实例不需要触发视图更新，
@@ -50,6 +63,12 @@ function handleResize() {
 onMounted(() => {
   if (el.value) {
     chart = echarts.init(el.value)
+    // 参数声明成 unknown 再自己收窄：ECharts 的 params 是个跨所有图表类型的
+    // 大联合，直接标注具体类型会因为函数参数逆变而编译不过
+    chart.on('click', (params: unknown) => {
+      const p = params as { data?: { id?: string } }
+      emit('item-click', p.data?.id)
+    })
   }
   render()
   window.addEventListener('resize', handleResize)

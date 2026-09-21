@@ -69,6 +69,14 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '配件耗材', roles: ['admin', 'operator'] },
   },
   {
+    // 设备关系图。所有角色都能看，和后端 /api/devices/{id}/graph 同口径 ——
+    // 图上出现的都是能在设备档案、配件页里看到的既有数据
+    path: '/graph',
+    name: 'DeviceGraph',
+    component: () => import('../views/DeviceGraphView.vue'),
+    meta: { title: '设备关系图', roles: ['admin', 'operator'] },
+  },
+  {
     path: '/device-repairs',
     name: 'DeviceRepair',
     component: () => import('../views/DeviceRepairView.vue'),

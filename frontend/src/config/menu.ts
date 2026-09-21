@@ -45,6 +45,10 @@ export const MENU_GROUPS: MenuGroup[] = [
       { path: '/devices', title: '设备管理', icon: 'i-device', roles: ALL_ROLES },
       { path: '/devices/ledger', title: '设备台账', icon: 'i-ledger', roles: ALL_ROLES },
       { path: '/spare-parts', title: '配件耗材', icon: 'i-part', roles: ALL_ROLES },
+      // 关系图放在「资产」而不是「AI 能力」：它虽然是在 AI 那批计划里提的，
+      // 但实现上完全是确定性的关系查询、没有模型参与 ——
+      // 放进 AI 组会让人以为"这图是模型画的"，那是对它的误解
+      { path: '/graph', title: '设备关系图', icon: 'i-graph', roles: ALL_ROLES },
     ],
   },
   {

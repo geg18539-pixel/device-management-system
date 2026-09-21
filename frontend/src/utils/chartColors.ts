@@ -31,6 +31,17 @@ export interface ChartPalette {
   primarySoft: string
   /** 饼图扇区之间的描边色。取面板底色，让扇区看起来是断开的 */
   separator: string
+  /** 画在 canvas 上的文字（节点标签、坐标轴文字）。对应 tokens 的 --ink-1 */
+  ink: string
+  /**
+   * 关系图的连线。
+   *
+   * <p>⚠️ 取的是 <b>--ink-4</b> 的值，不是 --line-strong。这是算出来的，不是偏好：
+   * --line-strong 压 --surface 只有 **1.72:1**（亮）/ 1.69:1（暗），
+   * 而连线是**结构性要素**不是装饰 —— 没有它这张图就读不出关系，
+   * 按 WCAG 1.4.11 对图形对象的要求要过 3:1。--ink-4 压 --surface 是 3.11:1，刚好达标。
+   */
+  edge: string
 }
 
 /** 亮色主题。值和 tokens.css 的 :root 一致 */
@@ -42,6 +53,8 @@ const LIGHT: ChartPalette = {
   primary: '#0d758e',
   primarySoft: '#569eb0',
   separator: '#ffffff',
+  ink: '#16212a',
+  edge: '#8594a1',
 }
 
 /** 暗色主题。值和 tokens.css 的 html.dark 一致 */
@@ -53,6 +66,8 @@ const DARK: ChartPalette = {
   primary: '#37a9c5',
   primarySoft: '#73c3d6',
   separator: '#161e24',
+  ink: '#e3e9ed',
+  edge: '#5d6c76',
 }
 
 export function chartPalette(isDark: boolean): ChartPalette {

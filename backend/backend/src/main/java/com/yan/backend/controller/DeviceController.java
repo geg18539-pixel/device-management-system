@@ -5,6 +5,7 @@ import com.yan.backend.annotation.RequirePerm;
 import com.yan.backend.common.DownloadUtils;
 import com.yan.backend.common.Result;
 import com.yan.backend.dto.DeviceBorrowRequest;
+import com.yan.backend.dto.DeviceGraphVO;
 import com.yan.backend.dto.DeviceHealthVO;
 import com.yan.backend.dto.DeviceImportResultVO;
 import com.yan.backend.dto.DeviceLedgerVO;
@@ -18,6 +19,7 @@ import com.yan.backend.dto.PageResult;
 import com.yan.backend.entity.Device;
 import com.yan.backend.entity.DeviceTransfer;
 import com.yan.backend.excel.DeviceExcelExporter;
+import com.yan.backend.service.DeviceGraphService;
 import com.yan.backend.service.DeviceHealthService;
 import com.yan.backend.service.DeviceProfileService;
 import com.yan.backend.service.DeviceImportService;
@@ -61,17 +63,20 @@ public class DeviceController {
     private final DeviceImportService importService;
     private final DeviceExcelExporter excelExporter;
     private final DeviceHealthService deviceHealthService;
+    private final DeviceGraphService deviceGraphService;
 
     public DeviceController(DeviceService deviceService,
                             DeviceProfileService deviceProfileService,
                             DeviceImportService importService,
                             DeviceExcelExporter excelExporter,
-                            DeviceHealthService deviceHealthService) {
+                            DeviceHealthService deviceHealthService,
+                            DeviceGraphService deviceGraphService) {
         this.deviceService = deviceService;
         this.deviceProfileService = deviceProfileService;
         this.importService = importService;
         this.excelExporter = excelExporter;
         this.deviceHealthService = deviceHealthService;
+        this.deviceGraphService = deviceGraphService;
     }
 
     /**
@@ -109,6 +114,21 @@ public class DeviceController {
     @GetMapping("/{id}/health")
     public ResponseEntity<Result<DeviceHealthVO>> health(@PathVariable Long id) {
         return ResponseEntity.ok(Result.success(deviceHealthService.evaluate(id)));
+    }
+
+    /**
+     * GET /api/devices/{id}/graph —— 这台设备的关系图谱。
+     *
+     * <p>和上面的 /health 同口径：**只要求能看设备**（类级 {@code dev:device:list}）。
+     * 图上出现的都是能在别处看到的东西 —— 部门名、配件名和库存、
+     * 工单的故障描述和状态，没有一个是这里才暴露出来的新数据。
+     *
+     * <p>刻意**不单独开一个 /api/graph/**：图谱的主体就是"某一台设备"，
+     * 挂在设备下面语义最准，也顺带复用了既有的权限口径。
+     */
+    @GetMapping("/{id}/graph")
+    public ResponseEntity<Result<DeviceGraphVO>> graph(@PathVariable Long id) {
+        return ResponseEntity.ok(Result.success(deviceGraphService.graph(id)));
     }
 
     /**

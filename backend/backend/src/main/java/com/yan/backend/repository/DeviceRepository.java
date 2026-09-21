@@ -1,6 +1,7 @@
 package com.yan.backend.repository;
 
 import com.yan.backend.entity.Device;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
@@ -36,6 +37,20 @@ public interface DeviceRepository extends JpaRepository<Device, Long>, JpaSpecif
 
     /** 按设备名找一台「还没归属部门」的设备，用于给演示数据补部门（不会碰用户自己建的设备） */
     Optional<Device> findFirstByDeviceNameAndDeptIdIsNullOrderByIdAsc(String deviceName);
+
+    /**
+     * 同部门的**其他**设备。
+     *
+     * <p>设备关系图用。没有它的话，以一台设备为中心的 1 跳图是一个**只有星形、
+     * 没有别的设备节点**的图 —— "点一个设备继续往下走"这个交互就落空了，
+     * 用户看完一台只能回选择器里重新搜。加上同部门设备之后，
+     * 图才是可导航的：沿着部门走到旁边的设备，再以它为中心展开。
+     *
+     * <p>用 {@code IdNot} 把自己排除掉，否则中心设备会在图上出现两次。
+     * 排序用 id 而不是别的字段：**结果必须是稳定的**，
+     * 否则同一台设备每次刷新看到的邻居都不一样，会让人以为数据在变。
+     */
+    Page<Device> findByDeptIdAndIdNotOrderByIdAsc(Long deptId, Long id, Pageable pageable);
 
     /**
      * 把生命周期状态为空的设备回填成指定值。
