@@ -84,12 +84,12 @@ public class LogAspect {
         operLog.setOperatorName(UserContext.getUsername());
 
         if (error != null) {
-            operLog.setStatus("失败");
+            operLog.setStatus(SysOperLog.STATUS_FAILED);
             operLog.setErrorMsg(truncate(error.getMessage() == null
                     ? error.getClass().getSimpleName()
                     : error.getClass().getSimpleName() + ": " + error.getMessage(), 2000));
         } else {
-            operLog.setStatus("成功");
+            operLog.setStatus(SysOperLog.STATUS_SUCCESS);
         }
 
         return operLog;

@@ -1,0 +1,99 @@
+# ============================================================
+# 构建镜像 → 推到 GHCR（GitHub 自带的容器仓库）
+#
+# 跑完之后，在**任何一台装了 Docker 的机器**上：
+#
+#     docker compose pull
+#     docker compose up -d
+#
+# 就能起来（docker-compose.yml 里的 image: 已经指向 GHCR）。
+#
+# 为什么用 GHCR 而不是 Docker Hub：
+#   - 用的是**自动的** GITHUB_TOKEN，不用你去建 token、加 secret
+#   - 和代码在同一个地方，权限、可见性都跟着仓库走
+#
+# ⚠️ 第一次推完之后，包默认是**私有的**。要让别人能拉，
+#    到仓库的 Packages 页面把那个包的可见性改成 public。
+# ============================================================
+name: 构建并推送镜像
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  # 允许在 Actions 页面手动点一次 —— 改过 Dockerfile 想立刻重建时用得上
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # 推 GHCR 必须要这一条
+  packages: write
+
+# 同一个分支连推时取消上一次。镜像构建很慢，没必要让旧的那次跑完
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      # 一个镜像挂了不要连累另一个 —— 默认是 true（挂了就取消其余的），
+      # 但这里两个镜像互不依赖，各自失败更有信息量
+      fail-fast: false
+      matrix:
+        include:
+          - name: backend
+            # ⚠️ 注意是 backend/backend —— Maven 项目根（有 pom.xml 的那层）
+            # 在 backend/ 的子目录里。写成 ./backend 的话构建会找不到 pom.xml
+            context: ./backend/backend
+          - name: frontend
+            context: ./frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # buildx 才支持下面用到的 type=gha 缓存
+      - uses: docker/setup-buildx-action@v3
+
+      - name: 登录 GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          # github.actor 就是触发这次构建的人，用它配合自动 token 登录
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 生成镜像标签
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # ⚠️ **GHCR 要求镜像名全小写。** github.repository 通常已经是小写，
+          # 但如果仓库名里出现大写字母，推的时候会报 "invalid reference format"。
+          # 这个仓库名是小写的，所以直接用它。
+          images: ghcr.io/${{ github.repository }}/${{ matrix.name }}
+          tags: |
+            # 打 v1.2.3 这样的 tag 时 → 1.2.3 / 1.2
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            # 每次提交都给一个按 commit 区分的 tag，出问题时能精确回滚到某一次
+            type=sha,format=long
+            # main 分支的构建额外打一个 latest
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: 构建并推送
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # ⚠️ 缓存是这两个工作流里最值钱的一行。
+          # 两个 Dockerfile 都是多阶段的，最慢的一步是"装依赖"
+          # （后端 mvn dependency:go-offline、前端 pnpm install）——
+          # 那一层只要 pom/lock 没变就命中的话，重建从十几分钟降到一两分钟。
+          #
+          # scope 分开：两个镜像的缓存不能混在一起，否则互相覆盖
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}

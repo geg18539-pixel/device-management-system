@@ -177,7 +177,7 @@ public class JwtInterceptor implements HandlerInterceptor {
     private void recordDenied(HttpServletRequest request, LoginUser loginUser, String reason) {
         try {
             SysOperLog entry = new SysOperLog();
-            entry.setTitle("越权访问被拒绝");
+            entry.setTitle(SysOperLog.TITLE_DENIED);
             entry.setBusinessType("OTHER");
             entry.setRequestMethod(request.getMethod());
             entry.setRequestUrl(truncateUrl(buildFullUrl(request)));
@@ -185,7 +185,7 @@ public class JwtInterceptor implements HandlerInterceptor {
             entry.setOperatorId(loginUser.userId());
             entry.setOperatorName(loginUser.username());
             entry.setIp(RequestUtils.getClientIp());
-            entry.setStatus("失败");
+            entry.setStatus(SysOperLog.STATUS_FAILED);
             entry.setErrorMsg(reason);
             entry.setCostTime(0L);
             operLogRecorder.saveAsync(entry);

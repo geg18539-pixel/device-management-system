@@ -1,10 +1,21 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { visibleGroups, type MenuItem } from '../config/menu'
+import { AREA_META, visibleGroups, type Area, type MenuItem } from '../config/menu'
 import { useAppStore } from '../stores/app'
 import { useMessageStore } from '../stores/message'
 import { useUserStore } from '../stores/user'
+
+const props = defineProps<{
+  /**
+   * 当前所在区域。
+   *
+   * <p>决定三件事：用哪套菜单、品牌区显示什么、走哪套样式。
+   * 由 App.vue 从当前路径推出来（见 menu.ts 的 areaOfRoute），
+   * 而不是侧栏自己判断 —— 侧栏不该知道"哪些路径算后台"。
+   */
+  area: Area
+}>()
 
 const route = useRoute()
 const router = useRouter()
@@ -13,7 +24,20 @@ const userStore = useUserStore()
 const msgStore = useMessageStore()
 
 /** 按当前用户的角色过滤后的导航结构 */
-const groups = computed(() => visibleGroups(userStore.roles))
+const groups = computed(() => visibleGroups(props.area, userStore.roles))
+
+/**
+ * 品牌区的两行字。
+ *
+ * <p>工作台用**系统参数里的系统名称**（管理员改了侧栏跟着变）；
+ * 后台固定叫「管理后台」。两个区域要一眼能区分开，
+ * 后台的名字跟着系统名称走反而失去了区分作用 —— 所以 AREA_META
+ * 里后台那两项是写死的，这里用 `||` 表达"只有工作台才回退到系统名称"。
+ */
+const brandName = computed(() => AREA_META[props.area].brand || appStore.systemName)
+const brandTagline = computed(
+  () => AREA_META[props.area].tagline || appStore.companyName || '资产管理平台',
+)
 
 /**
  * 展开的目录（按 title 记）。
@@ -116,22 +140,37 @@ function go(path?: string) {
 </script>
 
 <template>
-  <nav class="rail" :class="{ 'is-collapsed': appStore.railCollapsed }" aria-label="主导航">
+  <nav
+    class="rail"
+    :class="{ 'is-collapsed': appStore.railCollapsed, 'is-console': area === 'console' }"
+    :aria-label="AREA_META[area].label + '导航'"
+  >
     <!-- 品牌区。深色轨上唯一用主色的地方。
          收起时只留标记，名称让位给图标 -->
     <div class="rail-brand">
       <span class="rail-mark">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none"
+        <!-- 两个区域用不同的标记。这是"我现在在哪个系统里"最省事的一眼信号 ——
+             比读名字快，而且收起态下名字本来就看不到 -->
+        <svg v-if="area === 'workbench'" viewBox="0 0 24 24" width="16" height="16" fill="none"
              stroke="currentColor" stroke-width="1.6" aria-hidden="true">
           <rect x="3.5" y="4" width="17" height="6.5" rx="1.4" />
           <rect x="3.5" y="13.5" width="17" height="6.5" rx="1.4" />
           <circle cx="7" cy="7.25" r="1.05" fill="currentColor" stroke="none" />
           <circle cx="7" cy="16.75" r="1.05" fill="currentColor" stroke="none" />
         </svg>
+        <!-- 后台：一个带标题栏的窗口（两个圆点是它独有的细节）。
+             和工作台那两叠"机柜"相比，一眼能看出不是同一个地方 -->
+        <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="none"
+             stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+          <rect x="3" y="4" width="18" height="16" rx="1.8" />
+          <path d="M3 8.6h18" />
+          <circle cx="6.2" cy="6.3" r=".95" fill="currentColor" stroke="none" />
+          <circle cx="9.2" cy="6.3" r=".95" fill="currentColor" stroke="none" />
+        </svg>
       </span>
       <span class="rail-name">
-        <b>{{ appStore.systemName }}</b>
-        <span>{{ appStore.companyName || '资产管理平台' }}</span>
+        <b>{{ brandName }}</b>
+        <span>{{ brandTagline }}</span>
       </span>
     </div>
 
@@ -244,6 +283,31 @@ function go(path?: string) {
 }
 
 /* ---------- 品牌 ---------- */
+/* ---------- 管理后台：同色系，靠密度和一道强调条区分 ----------
+   ⚠️ 刻意**不另起一套配色**：新增颜色意味着每一处「前景压背景」的组合
+   都要重新算对比度（这个项目在这上面栽过好几次）。而两个区域的区分
+   靠"密度 + 标记 + 一道条"已经足够，而且更容易做对。 */
+
+/* 顶部横贯整个侧栏的强调条。全站唯一一处这样的色带，
+   切区域时它是最快的一眼信号（比读品牌区的小字快得多）。
+   用 --rail-accent 而不是 --signal：亮色的主色是深青 #0d758e，
+   压在深色轨上只有 2.55:1，tokens.css 里写明了它不能用在深色区。
+   用 inset shadow 而不是 border-top —— 后者会占掉 3px 高度，
+   把品牌区和顶栏的高度差弄乱 */
+.rail.is-console {
+  box-shadow: inset 0 3px 0 var(--rail-accent);
+}
+
+/* 后台的密度更高：管理员是来干活的，一屏能扫到更多项目比"看着宽松"重要。
+   34 → 30px 一档就够，再小点击区域就不合适了 */
+.rail.is-console .rail-item {
+  height: 30px;
+}
+
+.rail.is-console .rail-group-title {
+  padding-bottom: 4px;
+}
+
 .rail-brand {
   display: flex;
   align-items: center;

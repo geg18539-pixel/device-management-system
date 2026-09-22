@@ -297,7 +297,7 @@ defineExpose({ run })
     <div v-if="output || running" class="output-panel">
       <header class="output-head">
         <span class="output-title">AI 维修建议</span>
-        <span v-if="running" class="output-hint">生成中…（3B 模型在 CPU 上可能要几十秒）</span>
+        <span v-if="running" class="output-hint">生成中…（本机模型可能要几十秒）</span>
       </header>
       <pre ref="outputBox" class="output-text">{{ output }}</pre>
     </div>

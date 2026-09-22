@@ -78,4 +78,7 @@ public interface SysUserRepository extends JpaRepository<SysUser, Long>, JpaSpec
     List<SysUser> findAlertRecipients(@Param("enabledStatus") String enabledStatus,
                                       @Param("adminRole") String adminRole,
                                       @Param("perms") Collection<String> perms);
+
+    /** 按账号状态数个数。后台首页的「停用账号」用它 */
+    long countByStatus(String status);
 }

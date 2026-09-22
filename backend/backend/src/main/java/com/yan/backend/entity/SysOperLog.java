@@ -30,6 +30,20 @@ public class SysOperLog {
     @Column(name = "title", length = 50)
     private String title;
 
+    /**
+     * 「越权访问被拒绝」这条记录的标题。
+     *
+     * <p>收在实体上而不是两边各写一遍字符串：写入点在
+     * {@code JwtInterceptor.recordDenied}，读取点是后台概览的
+     * 「今日越权被拒」统计。**两边不一致不会报错**，只会让那个数字恒为 0 ——
+     * 而"0 次越权"看起来恰恰是个好消息，不会有人去查。
+     */
+    public static final String TITLE_DENIED = "越权访问被拒绝";
+
+    /** 操作结果。写入点在 LogAspect 和 JwtInterceptor */
+    public static final String STATUS_SUCCESS = "成功";
+    public static final String STATUS_FAILED = "失败";
+
     /** 业务类型：INSERT / UPDATE / DELETE / OTHER */
     @Column(name = "business_type", length = 20)
     private String businessType;

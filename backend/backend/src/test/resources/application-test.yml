@@ -1,0 +1,51 @@
+# ============================================================
+# 单元测试用的配置（在 src/test/resources 下，**不会进 jar**）
+#
+# 为什么必须有这个文件：默认的 BackendApplicationTests 是 @SpringBootTest，
+# 它会启动**完整的应用上下文** —— 包括数据源。没有这份配置的话，
+# 它会去连 application.yml 里的 MySQL，本地没起库就报连接失败、CI 里必挂。
+#
+# 换成 H2 内存库之后，这个测试才真的在检验东西：实体映射对不对、
+# 种子数据能不能跑完、Bean 装配得起来吗。而不是"连不上库所以跳过"。
+# ============================================================
+spring:
+  datasource:
+    # MODE=MySQL 让 H2 按 MySQL 的语法习惯解析，减少"本地能跑 CI 不能跑"
+    # DB_CLOSE_DELAY=-1 保证同一个 JVM 内多次拿到的还是同一个库
+    url: jdbc:h2:mem:dms-test;MODE=MySQL;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      # create-drop：每个测试类跑完就把表删掉，测试之间互不影响
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+  data:
+    redis:
+      # 关掉"Spring Data Redis 扫描 JPA 仓库能不能当 Redis 仓库用"那段噪音。
+      # 不关的话日志里会刷一屏 Could not safely identify store assignment。
+      repositories:
+        enabled: false
+
+app:
+  ai:
+    # ⚠️ 指向一个必然连不上的端口（1 号端口不会有服务监听）。
+    #
+    # 启动预热（首页摘要）会去调模型。指向这里时是**立刻**连接被拒，
+    # 而不是等默认的 10 秒连接超时 —— 让测试保持在一两秒内跑完。
+    # 那两处调用本来就有 try/catch，失败只会留一条 WARN，不影响测试结果。
+    chat:
+      base-url: http://127.0.0.1:1
+    embedding:
+      base-url: http://127.0.0.1:1
+
+logging:
+  level:
+    # Spring / Hibernate 的启动日志在测试里没什么用，压到 WARN。
+    # 但**项目自己的日志保持 INFO** —— 种子数据失败那类问题正是靠它发现的。
+    root: WARN
+    com.yan.backend: INFO

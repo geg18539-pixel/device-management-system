@@ -26,7 +26,7 @@ public interface DiagnosisService {
     /**
      * 检索 + 流式生成建议。
      *
-     * <p>必须流式：3B 模型在 CPU 上生成一段建议要几十秒，
+     * <p>必须流式：本机小模型在 CPU 上生成一段建议要几十秒，
      * 前端 axios 默认超时 10 秒，同步返回必然失败。
      */
     void streamDiagnosis(DiagnosisRequest request, OutputStream outputStream) throws IOException;

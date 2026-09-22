@@ -1,28 +1,17 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import {
-  MSG_LEVEL,
-  markAllMessagesRead,
-  markMessageRead,
-  routeForMessage,
-  type SysMessage,
-} from './api/message'
+import { computed, onMounted, onUnmounted } from 'vue'
+import { useRoute } from 'vue-router'
 import AppRail from './components/AppRail.vue'
-import { locateMenu } from './config/menu'
+import TopActions from './components/TopActions.vue'
+import TopNav from './components/TopNav.vue'
+import { areaOfRoute, locateMenu } from './config/menu'
 import { NARROW_QUERY, useAppStore } from './stores/app'
-import { useMessageStore } from './stores/message'
-import { useUserStore } from './stores/user'
 
 const route = useRoute()
-const router = useRouter()
 const appStore = useAppStore()
-const userStore = useUserStore()
-const msgStore = useMessageStore()
 
 /**
- * 登录页、改密页这类"裸页面"不套后台外壳。
+ * 登录页、改密页这类"裸页面"不套任何外壳。
  * 判断依据是路由的 meta，而不是硬编码 path，
  * 以后加注册页、找回密码页只要标一下 meta 就行。
  *
@@ -32,25 +21,37 @@ const msgStore = useMessageStore()
 const isBarePage = computed(() => route.meta.public === true || route.meta.bare === true)
 
 /**
- * 面包屑。用 config/menu.ts 里那份导航定义反查当前路径属于哪个分组，
- * 和侧边栏共用一份来源，不会出现"侧边栏改了名字、面包屑还是旧的"。
+ * 当前所在区域（员工工作台 / 管理后台）。**它决定套哪一套外壳**。
  *
- * <p>找不到时返回 null，顶栏左侧留空 —— 比显示一段错误的路径好。
+ * <p>由路径推出来，不是由角色 —— 管理员同时也是员工，
+ * 他此刻在哪个区域取决于他在哪个页面。判定规则只有一条，
+ * 收在 config/menu.ts 的 areaOfRoute。
+ */
+const area = computed(() => areaOfRoute(route.path))
+
+/**
+ * 面包屑。只有**管理后台**的顶栏用得上。
  *
- * <p>页面级的大标题不在这里渲染：各页用 components/PageHeader.vue 自己写，
- * 因为每页的说明文字和主操作都不一样，外壳统一渲染反而要额外配一份 meta。
+ * <p>工作台不用它：那边顶栏是横向导航，导航本身的高亮就说明了位置，
+ * 而且每个页面都有自己的 PageHeader 标题 —— 三者叠在一起是重复。
  */
 const crumb = computed(() => locateMenu(route.path))
 
-// ============================================================
-// 主题
-// ============================================================
-
-const themeTitle = computed(() => (appStore.isDark ? '切换到亮色' : '切换到暗色'))
+/**
+ * 工作台顶栏的品牌区。
+ *
+ * <p>用**系统参数里的系统名称**（管理员改了跟着变）。后台那个写死的
+ * 「管理后台」正好相反：后台要固定（区域要能一眼区分），工作台要跟着企业走。
+ */
+const brandName = computed(() => appStore.systemName)
+const brandTagline = computed(() => appStore.companyName || '资产管理平台')
 
 // ============================================================
 // 窄屏自动收起侧栏
 // ============================================================
+//
+// ⚠️ 这一条只对**管理后台**那套外壳有意义 —— 工作台没有侧栏。
+// 留着不动是因为它本身没错：窄屏下把侧栏收成图标条仍然是后台该有的行为。
 
 const narrowQuery = window.matchMedia(NARROW_QUERY)
 
@@ -62,11 +63,7 @@ const narrowQuery = window.matchMedia(NARROW_QUERY)
  * 展开等于覆盖他的偏好。反过来，窄屏下不收会让表格被挤到看不全，
  * 所以这个方向必须强制。
  *
- * <p>`persist = false`：这是环境导致的收起，不是用户的选择，
- * 不写进 localStorage。
- *
- * <p>初始值不在这里处理 —— stores/app.ts 建 store 时就已经判断过
- * matchMedia 了，首帧画出来就是对的。这里只管"开着窗口拖宽窄"的情况。
+ * <p>`persist = false`：这是环境导致的收起，不是用户的选择，不写进 localStorage。
  */
 function handleNarrowChange(event: MediaQueryListEvent) {
   if (event.matches) {
@@ -76,91 +73,6 @@ function handleNarrowChange(event: MediaQueryListEvent) {
 
 onMounted(() => narrowQuery.addEventListener('change', handleNarrowChange))
 onUnmounted(() => narrowQuery.removeEventListener('change', handleNarrowChange))
-
-// ============================================================
-// 退出登录
-// ============================================================
-
-async function handleLogout() {
-  try {
-    await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
-      type: 'warning',
-      confirmButtonText: '退出',
-      cancelButtonText: '取消',
-    })
-  } catch {
-    // 点了取消
-    return
-  }
-
-  userStore.logout()
-  ElMessage.success('已退出登录')
-  await router.replace('/login')
-}
-
-function handleCommand(command: string) {
-  if (command === 'logout') {
-    void handleLogout()
-  }
-}
-
-// ============================================================
-// 站内消息
-// ============================================================
-
-/**
- * 登录状态变化时启停消息轮询。
- *
- * <p>⚠️ 退出登录后**必须停掉轮询**：否则它会继续发请求、每次都 401、
- * 每次都触发跳登录页，用户会看到登录页在反复刷新。
- */
-watch(
-  () => userStore.isLoggedIn,
-  (loggedIn) => {
-    if (loggedIn) {
-      void msgStore.refresh()
-      msgStore.startPolling()
-    } else {
-      msgStore.reset()
-    }
-  },
-  { immediate: true },
-)
-
-function formatMsgTime(value?: string): string {
-  if (!value) return ''
-  return value.replace('T', ' ').slice(5, 16)
-}
-
-/** 点一条消息：先标记已读，再跳到对应的业务页 */
-async function openMessage(msg: SysMessage) {
-  if (!msg.readFlag) {
-    try {
-      await markMessageRead(msg.id)
-    } catch {
-      // 标记失败不影响跳转，下次刷新还会是未读
-    }
-  }
-  const target = routeForMessage(msg)
-  if (target) {
-    await router.push(target)
-  }
-  void msgStore.refresh()
-}
-
-async function handleReadAll() {
-  try {
-    await markAllMessagesRead()
-    ElMessage.success('已全部标记为已读')
-    await msgStore.refresh()
-  } catch {
-    // 提示已由拦截器处理
-  }
-}
-
-function goMessages() {
-  void router.push('/messages')
-}
 </script>
 
 <template>
@@ -261,14 +173,77 @@ function goMessages() {
         <path d="M15.2 15.2L21 21" />
         <path d="M8 12.8v-1.9M10.4 12.8V8.3M12.8 12.8V9.9" />
       </g>
+
+      <!-- ═══════ 管理后台的图标 ═══════
+           这一组是后台专有的，和上面工作台那批在**画法**上错开：
+           工作台的图标偏"物体"（显示器、扳手、铃铛），
+           后台的偏"结构"（树、盾牌、门、纸）—— 进哪个区域一眼能感觉出不一样 -->
+
+      <!-- 用户：一个人 -->
+      <g id="i-user">
+        <circle cx="12" cy="8" r="3.4" />
+        <path d="M5.5 19.6c0-3.6 2.9-6.1 6.5-6.1s6.5 2.5 6.5 6.1" />
+      </g>
+      <!-- 角色：一个盾牌。角色是"权限的集合"，盾牌能表达这层含义，
+           而且和「用户」那个头像不会看混（两个都画人最容易混） -->
+      <g id="i-role">
+        <path d="M12 3.2l7 2.6v5.4c0 4.2-2.9 7.7-7 9.6-4.1-1.9-7-5.4-7-9.6V5.8z" />
+        <path d="M9 11.8l2.2 2.2 4-4.3" />
+      </g>
+      <!-- 部门：组织树。一个父节点往下连两个子节点 ——
+           这正是"部门"在系统里的形态（SysDept 是 parentId 自关联树） -->
+      <g id="i-dept">
+        <rect x="9" y="3.2" width="6" height="4.4" rx="1" />
+        <rect x="3.2" y="16.4" width="6" height="4.4" rx="1" />
+        <rect x="14.8" y="16.4" width="6" height="4.4" rx="1" />
+        <path d="M12 7.6v4.2M6.2 16.4v-2.3h11.6v2.3M12 11.8v2.3" />
+      </g>
+      <!-- 菜单：三条不同长度的横线表示层级缩进，右侧两条短横是它可以挂子项。
+           刻意不用汉堡菜单的三条等长线 —— 那是"更多"的通用符号 -->
+      <g id="i-menu">
+        <path d="M4 6.5h11M4 12h16M4 17.5h8" />
+        <path d="M17.2 4.6h2.8M17.2 8.4h2.8" />
+      </g>
+      <!-- 系统设置：齿轮 -->
+      <g id="i-config">
+        <circle cx="12" cy="12" r="3" />
+        <path d="M12 2.8v2.5M12 18.7v2.5M4.4 12H2M22 12h-2.4M6.6 6.6L4.9 4.9M19.1 19.1l-1.8-1.8M17.4 6.6l1.7-1.7M4.9 19.1l1.8-1.8" />
+      </g>
+      <!-- 字典：一列"键 / 值"条目（左边短、右边长）——
+           字典项就是 itemValue 和 itemLabel 两列，这个画法直接对应它的数据形态 -->
+      <g id="i-dict">
+        <path d="M4 6.5h4M11.5 6.5h8.5M4 12h4M11.5 12h8.5M4 17.5h4M11.5 17.5h8.5" />
+      </g>
+      <!-- 登录日志：箭头穿过门框 -->
+      <g id="i-login">
+        <path d="M13.5 3.5h5a1.5 1.5 0 011.5 1.5v14a1.5 1.5 0 01-1.5 1.5h-5" />
+        <path d="M3.5 12h10M10.2 8.6l3.5 3.4-3.5 3.4" />
+      </g>
+      <!-- 操作日志：一叠带行的纸 -->
+      <g id="i-log">
+        <path d="M6 3.5h9l3.5 3.5v13.5H6z" />
+        <path d="M15 3.5V7h3.5" />
+        <path d="M8.8 11.5h6.4M8.8 15h4.4" />
+      </g>
+      <!-- 后台首页：一栋房子（"回到后台的首页"）。
+           刻意不用工作台那个四宫格（i-dash）—— 两个区域的首页图标一样的话，
+           在侧栏里根本分不出自己在哪一边 -->
+      <g id="i-home">
+        <path d="M3.5 10.9L12 4.2l8.5 6.7V20H3.5z" />
+        <path d="M9.6 20v-5.4h4.8V20" />
+      </g>
     </defs>
   </svg>
 
   <!-- 裸页面（登录页、改密页）直接渲染，不套侧边栏和顶栏 -->
+
   <router-view v-if="isBarePage" />
 
-  <div v-else class="layout">
-    <AppRail />
+  <!-- ============================================================
+       管理后台：左侧竖栏 + 顶栏（面包屑）
+       ============================================================ -->
+  <div v-else-if="area === 'console'" class="layout is-console">
+    <AppRail :area="area" />
 
     <div class="main-col">
       <header class="topbar">
@@ -280,100 +255,7 @@ function goMessages() {
           </template>
         </div>
 
-        <div class="topbar-right">
-          <!-- 主题切换 -->
-          <button
-            type="button"
-            class="icon-btn"
-            :title="themeTitle"
-            :aria-label="themeTitle"
-            @click="appStore.toggleTheme()"
-          >
-            <svg viewBox="0 0 24 24" width="17" height="17" fill="none"
-                 stroke="currentColor" stroke-width="1.7"
-                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <use :href="appStore.isDark ? '#i-sun' : '#i-moon'" />
-            </svg>
-          </button>
-
-          <!-- 站内消息。有未读时右上角显示红点数字 -->
-          <el-dropdown trigger="click" placement="bottom-end">
-            <el-badge
-              :value="msgStore.unreadCount"
-              :hidden="!msgStore.hasUnread"
-              :max="99"
-              class="bell-badge"
-            >
-              <span class="bell" title="站内消息">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
-                     stroke="currentColor" stroke-width="1.7"
-                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <use href="#i-bell" />
-                </svg>
-              </span>
-            </el-badge>
-
-            <template #dropdown>
-              <div class="msg-panel">
-                <div class="msg-panel-head">
-                  <span class="msg-panel-title">站内消息</span>
-                  <el-button
-                    v-if="msgStore.hasUnread"
-                    link
-                    type="primary"
-                    size="small"
-                    @click="handleReadAll"
-                  >
-                    全部已读
-                  </el-button>
-                </div>
-
-                <div v-if="!msgStore.recent.length" class="msg-empty">暂无消息</div>
-                <div v-else class="msg-list">
-                  <div
-                    v-for="m in msgStore.recent"
-                    :key="m.id"
-                    class="msg-item"
-                    :class="{ unread: !m.readFlag }"
-                    @click="openMessage(m)"
-                  >
-                    <div class="msg-item-main">
-                      <span class="msg-dot" :class="{ hidden: m.readFlag }" />
-                      <span class="msg-title" :class="{ important: m.level === MSG_LEVEL.IMPORTANT }">
-                        {{ m.title }}
-                      </span>
-                    </div>
-                    <div class="msg-time num">{{ formatMsgTime(m.createTime) }}</div>
-                  </div>
-                </div>
-
-                <div class="msg-panel-foot">
-                  <el-button link type="primary" size="small" @click="goMessages">
-                    查看全部
-                  </el-button>
-                </div>
-              </div>
-            </template>
-          </el-dropdown>
-
-          <el-dropdown @command="handleCommand">
-            <span class="user">
-              <span class="avatar">{{ userStore.nickname.slice(0, 1) }}</span>
-              <span class="user-text">
-                <span class="uname">{{ userStore.nickname }}</span>
-                <span class="urole">{{ userStore.roles.join('、') || '无角色' }}</span>
-              </span>
-            </span>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item disabled>
-                  角色：{{ userStore.roles.join('、') || '无' }}
-                </el-dropdown-item>
-                <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-        </div>
+        <TopActions :area="area" />
       </header>
 
       <main class="content">
@@ -381,10 +263,47 @@ function goMessages() {
       </main>
     </div>
   </div>
+
+  <!-- ============================================================
+       员工工作台：横向顶部导航（没有左侧栏）
+
+       一级是菜单分组，二级在悬停下拉里。用横向而不是竖栏，是因为工作台
+       只有 5 个分组、11 个页面 —— 数量少到一横排放得下，把纵向空间整个
+       让给内容（表格、图表这些最怕横向被挤）。
+
+       管理后台**保持竖栏**：那边 12 项、以配置为主，竖排更合适；
+       而且两个区域从结构上就不一样，一眼能看出是换了个系统。
+       ============================================================ -->
+  <div v-else class="layout is-workbench">
+    <header class="topnav">
+      <RouterLink class="brand" to="/dashboard">
+        <span class="brand-mark">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none"
+               stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <rect x="3.5" y="4" width="17" height="6.5" rx="1.4" />
+            <rect x="3.5" y="13.5" width="17" height="6.5" rx="1.4" />
+            <circle cx="7" cy="7.25" r="1.05" fill="currentColor" stroke="none" />
+            <circle cx="7" cy="16.75" r="1.05" fill="currentColor" stroke="none" />
+          </svg>
+        </span>
+        <span class="brand-text">
+          <b>{{ brandName }}</b>
+          <span>{{ brandTagline }}</span>
+        </span>
+      </RouterLink>
+
+      <TopNav />
+
+      <TopActions :area="area" />
+    </header>
+
+    <main class="content">
+      <router-view />
+    </main>
+  </div>
 </template>
 
 <style scoped>
-/* 图标集本身不占布局，只是把 symbol 放进文档 */
 .icon-sprite {
   position: absolute;
   width: 0;
@@ -392,8 +311,21 @@ function goMessages() {
   overflow: hidden;
 }
 
-/* ---------- 外壳 ---------- */
-.layout {
+/* ============================================================
+   两套外壳的公共部分
+   ============================================================ */
+
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--sp-5);
+}
+
+/* ============================================================
+   管理后台：左栏 + 顶栏
+   ============================================================ */
+
+.layout.is-console {
   display: flex;
   height: 100vh;
   overflow: hidden;
@@ -407,7 +339,6 @@ function goMessages() {
   min-width: 0;
 }
 
-/* ---------- 顶栏 ---------- */
 .topbar {
   display: flex;
   align-items: center;
@@ -422,7 +353,7 @@ function goMessages() {
 .crumb {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-2);
   font-size: 13px;
   min-width: 0;
 }
@@ -431,225 +362,89 @@ function goMessages() {
   color: var(--ink-3);
 }
 
-/* 面包屑用斜杠分隔，不用中点拼接（"A · B · C" 是模板化界面的高频特征） */
 .crumb .sep {
   color: var(--ink-4);
 }
 
 .crumb b {
-  font-weight: 500;
-  color: var(--ink-1);
-}
-
-.topbar-right {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-}
-
-.icon-btn {
-  width: 32px;
-  height: 32px;
-  display: grid;
-  place-items: center;
-  color: var(--ink-2);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--r-control);
-  cursor: pointer;
-}
-
-.icon-btn:hover {
-  color: var(--ink-1);
-  background: var(--sunken);
-}
-
-/* ---------- 内容区 ---------- */
-.content {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--sp-5);
-  background: var(--canvas);
-}
-
-/* ---------- 消息铃铛 ---------- */
-.bell {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px;
-  color: var(--ink-2);
-  cursor: pointer;
-  outline: none;
-}
-
-.bell:hover {
-  color: var(--signal);
-}
-
-/* 红点压到铃铛右上角，不要挤在默认位置 */
-.bell-badge :deep(.el-badge__content) {
-  top: 6px;
-  right: 10px;
-}
-
-/* ---------- 消息下拉面板 ---------- */
-.msg-panel {
-  width: 320px;
-  text-align: left;
-}
-
-.msg-panel-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--line);
-}
-
-.msg-panel-title {
-  font-size: 13px;
   font-weight: 600;
   color: var(--ink-1);
 }
 
-.msg-empty {
-  padding: 28px 0;
-  text-align: center;
-  font-size: 13px;
-  color: var(--ink-3);
-}
+/* ============================================================
+   员工工作台：横向顶部导航
+   ============================================================ */
 
-.msg-list {
-  max-height: 320px;
-  overflow-y: auto;
-}
-
-.msg-item {
+.layout.is-workbench {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--line-soft);
-  cursor: pointer;
-}
-
-.msg-item:hover {
-  background: var(--hover);
-}
-
-.msg-item-main {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  min-width: 0;
-}
-
-/* 未读的小圆点。已读时不显示，但**保留占位**（visibility: hidden 而不是
-   display: none），否则已读和未读的标题会左右错开一截，看着很乱 */
-.msg-dot {
-  flex-shrink: 0;
-  width: 6px;
-  height: 6px;
-  margin-top: 6px;
-  border-radius: 50%;
-  background: var(--crit);
-}
-
-.msg-dot.hidden {
-  visibility: hidden;
-}
-
-.msg-title {
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--ink-2);
+  flex-direction: column;
+  height: 100vh;
   overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  background: var(--canvas);
 }
 
-.msg-item.unread .msg-title {
-  color: var(--ink-1);
-  font-weight: 500;
+/* 顶栏是浅色的（和后台那条一样），**不是**深色轨道 ——
+   深色轨道那套 token 是为 232px 竖条调的，横过来占满整屏宽度之后
+   面积差了几十倍，观感是另一回事。
+   用 --surface + ink 系列，全部是已验证过的组合，不新增任何配色 */
+.topnav {
+  display: flex;
+  align-items: stretch;
+  gap: var(--sp-5);
+  height: var(--topbar-h);
+  padding: 0 var(--sp-5);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  flex: none;
 }
 
-.msg-title.important {
-  color: var(--crit);
-}
-
-.msg-time {
-  flex-shrink: 0;
-  font-size: 11px;
-  color: var(--ink-3);
-}
-
-.msg-panel-foot {
-  padding: 8px;
-  text-align: center;
-  border-top: 1px solid var(--line);
-}
-
-/* ---------- 用户 ---------- */
-.user {
-  display: inline-flex;
+/* 品牌区。整块可点，回工作台首页 */
+.brand {
+  display: flex;
   align-items: center;
-  gap: var(--sp-2);
-  padding: 3px 8px 3px 3px;
-  border: 1px solid transparent;
-  border-radius: var(--r-control);
-  cursor: pointer;
-  outline: none;
+  gap: 10px;
+  text-decoration: none;
+  flex: none;
 }
 
-.user:hover {
-  border-color: var(--line);
-}
-
-.avatar {
+.brand-mark {
   flex: none;
   width: 26px;
   height: 26px;
   display: grid;
   place-items: center;
-  font-size: 12px;
-  font-weight: 600;
   color: var(--on-signal);
   background: var(--signal);
   border-radius: var(--r-control);
 }
 
-.user-text {
+.brand-text {
   display: flex;
   flex-direction: column;
-  line-height: 1.2;
+  line-height: 1.25;
 }
 
-.uname {
+.brand-text b {
   font-size: 13px;
+  font-weight: 600;
   color: var(--ink-1);
 }
 
-.urole {
+.brand-text span {
   font-size: 11px;
   color: var(--ink-3);
+  white-space: nowrap;
 }
 
-/* ---------- 窄屏：顶栏省掉次要信息，把空间让给操作 ---------- */
+/* 窄屏：品牌只留标记，导航尽量留着 —— 它是唯一的入口，
+   藏起来用户就没法换页了（横向排不下时可以横向滚动） */
 @media (max-width: 900px) {
-  .crumb {
+  .brand-text {
     display: none;
   }
 
-  .topbar {
-    padding: 0 var(--sp-4);
-  }
-
-  .content {
-    padding: var(--sp-4);
+  .topnav {
+    gap: var(--sp-3);
   }
 }
 </style>

@@ -47,6 +47,31 @@ const { hasPerm } = usePerm()
 
 const router = useRouter()
 
+/**
+ * 表格列的显隐。
+ *
+ * <p>设备有 14 个字段，全铺出来的固定宽度加起来约 1700px —— 普通屏幕上
+ * 必然要横向拉，而横向滚动条最烦人的地方是**操作列虽然 fixed 住了，
+ * 中间的列却被推出视野**，想看点什么都得先拉一下。
+ *
+ * <p>所以默认只留 9 列（约 1100px，普通屏幕放得下），型号/厂商/序列号/
+ * 位置/创建时间这五个低频字段默认收起来，用上面那个「显示列」按钮按需打开。
+ * 和用户管理页是同一套做法。
+ */
+const columns = reactive({
+  assetCode: true,
+  category: true,
+  dept: true,
+  model: false,
+  manufacturer: false,
+  serialNumber: false,
+  lifecycle: true,
+  borrower: true,
+  warranty: true,
+  location: false,
+  createTime: false,
+})
+
 /** 故障类型下拉的数据来自字典，不在前端硬编码 */
 const { options: faultTypeOptions } = useDict(DICT_TYPE.FAULT_TYPE)
 
@@ -870,22 +895,42 @@ onMounted(async () => {
         </div>
       </div>
 
+      <!-- 表格上方右对齐的列显隐。设备字段多，全铺出来必然要横向拉 -->
+      <div class="table-tools">
+        <el-popover placement="bottom-end" :width="160" trigger="click">
+          <template #reference>
+            <el-button size="small">显示列</el-button>
+          </template>
+          <el-checkbox v-model="columns.assetCode">资产编号</el-checkbox>
+          <el-checkbox v-model="columns.category">分类</el-checkbox>
+          <el-checkbox v-model="columns.dept">部门</el-checkbox>
+          <el-checkbox v-model="columns.model">型号</el-checkbox>
+          <el-checkbox v-model="columns.manufacturer">厂商</el-checkbox>
+          <el-checkbox v-model="columns.serialNumber">序列号</el-checkbox>
+          <el-checkbox v-model="columns.lifecycle">资产状态</el-checkbox>
+          <el-checkbox v-model="columns.borrower">借用人</el-checkbox>
+          <el-checkbox v-model="columns.warranty">保修到期</el-checkbox>
+          <el-checkbox v-model="columns.location">位置</el-checkbox>
+          <el-checkbox v-model="columns.createTime">创建时间</el-checkbox>
+        </el-popover>
+      </div>
+
       <el-table v-loading="loading" :data="deviceList">
-        <el-table-column prop="assetCode" label="资产编号" width="130" />
+        <el-table-column v-if="columns.assetCode" prop="assetCode" label="资产编号" width="130" />
         <el-table-column prop="deviceName" label="设备名称" min-width="140" show-overflow-tooltip />
-        <el-table-column label="分类" width="110">
+        <el-table-column v-if="columns.category" label="分类" width="110">
           <template #default="{ row }">
             <span :class="{ muted: !row.categoryId }">{{ categoryLabel(row.categoryId) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="部门" width="120">
+        <el-table-column v-if="columns.dept" label="部门" width="120">
           <template #default="{ row }">
             <span :class="{ muted: !row.deptId }">{{ deptLabel(row.deptId) }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="model" label="型号" width="110" show-overflow-tooltip />
-        <el-table-column prop="manufacturer" label="厂商" width="110" show-overflow-tooltip />
-        <el-table-column prop="serialNumber" label="序列号" min-width="120" show-overflow-tooltip />
+        <el-table-column v-if="columns.model" prop="model" label="型号" width="110" show-overflow-tooltip />
+        <el-table-column v-if="columns.manufacturer" prop="manufacturer" label="厂商" width="110" show-overflow-tooltip />
+        <el-table-column v-if="columns.serialNumber" prop="serialNumber" label="序列号" min-width="120" show-overflow-tooltip />
 
         <el-table-column label="状态" width="90">
           <template #default="{ row }">
@@ -893,7 +938,7 @@ onMounted(async () => {
           </template>
         </el-table-column>
 
-        <el-table-column label="资产状态" width="90">
+        <el-table-column v-if="columns.lifecycle" label="资产状态" width="90">
           <template #default="{ row }">
             <StatusPlate :tone="lifecycleTone(row.lifecycleStatus)">
               {{ lifecycleText(row.lifecycleStatus) }}
@@ -901,13 +946,13 @@ onMounted(async () => {
           </template>
         </el-table-column>
 
-        <el-table-column label="借用人" width="100">
+        <el-table-column v-if="columns.borrower" label="借用人" width="100">
           <template #default="{ row }">
             <span :class="{ muted: !row.borrower }">{{ row.borrower || '—' }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="保修到期" width="115">
+        <el-table-column v-if="columns.warranty" label="保修到期" width="115">
           <template #default="{ row }">
             <span v-if="!row.warrantyDate" class="muted">—</span>
             <span v-else :class="{ expired: isWarrantyExpired(row.warrantyDate) }">
@@ -916,8 +961,8 @@ onMounted(async () => {
           </template>
         </el-table-column>
 
-        <el-table-column prop="location" label="位置" min-width="100" show-overflow-tooltip />
-        <el-table-column label="创建时间" width="160">
+        <el-table-column v-if="columns.location" prop="location" label="位置" min-width="100" show-overflow-tooltip />
+        <el-table-column v-if="columns.createTime" label="创建时间" width="160">
           <template #default="{ row }">{{ formatTime(row.createTime) }}</template>
         </el-table-column>
 
@@ -1418,6 +1463,13 @@ onMounted(async () => {
 }
 
 /* 搜索栏：面板顶部的一条，和表格共用同一个面板 */
+/* 列显隐按钮：放在表格上方右对齐（和用户管理页一致） */
+.table-tools {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--sp-3) var(--sp-4) 0;
+}
+
 .filter-bar {
   padding: var(--sp-4);
   border-bottom: 1px solid var(--line-soft);

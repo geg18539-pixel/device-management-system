@@ -47,17 +47,22 @@ public class SysConfigController {
      * GET /api/config/public —— 只返回展示类的参数。
      *
      * <p>这个路径在 WebMvcConfig 里被排除在拦截器之外。
-     * 返回内容严格限制在 {@link ConfigKeys#PUBLIC_KEYS} 白名单内，
+     * 返回内容严格限制在 {@link ConfigKeys#PUBLIC_DEFAULTS} 白名单内，
      * **不要**顺手把整个参数表返回出去 —— 那样等于把密码策略、
      * 预警阈值这些内部配置暴露给了未登录的人。
      */
     @GetMapping("/api/config/public")
     public ResponseEntity<Result<Map<String, String>>> publicConfig() {
         Map<String, String> result = new LinkedHashMap<>();
-        result.put(ConfigKeys.SYSTEM_NAME,
-                sysConfigService.getString(ConfigKeys.SYSTEM_NAME, ConfigKeys.SYSTEM_NAME_DEFAULT));
-        result.put(ConfigKeys.COMPANY_NAME,
-                sysConfigService.getString(ConfigKeys.COMPANY_NAME, ConfigKeys.COMPANY_NAME_DEFAULT));
+
+        // ⚠️ **按白名单遍历，不要逐个 put。**
+        // 原来这里写死两项，而 ConfigKeys.PUBLIC_KEYS 那个列表根本没人读 ——
+        // 往白名单里加一项却忘了在这里补一行，白名单就成了摆设，且不报任何错。
+        // （真发生过：加 system.base-url 时接口照旧只返回原来那两项。）
+        // 遍历之后，"能返回哪些键"只有白名单一个地方说了算。
+        ConfigKeys.PUBLIC_DEFAULTS.forEach((key, fallback) ->
+                result.put(key, sysConfigService.getString(key, fallback)));
+
         return ResponseEntity.ok(Result.success(result));
     }
 

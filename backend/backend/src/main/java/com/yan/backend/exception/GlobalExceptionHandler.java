@@ -7,14 +7,17 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.MultipartException;
 
+import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -160,6 +163,71 @@ public class GlobalExceptionHandler {
                         "保存失败：数据不符合数据库约束。常见原因是编号/名称重复、"
                                 + "字段内容过长、或必填项为空。请检查后重试；"
                                 + "具体是哪一个约束，请看后端日志"));
+    }
+
+    /**
+     * 路径参数 / 查询参数的类型对不上。
+     *
+     * <p>比如 {@code GET /api/devices/abc} —— 接口上声明的是 {@code @PathVariable Long id}，
+     * 而 {@code abc} 解析不成数字。
+     *
+     * <p><b>这一类必须单独处理</b>：它不实现 {@code ErrorResponse}，
+     * 所以会一路落到兜底分支变成 500「服务器内部错误」——
+     * 可实际上请求方写的地址有问题，服务器一点毛病都没有。
+     * 前端收到 500 会去查后端日志，方向从一开始就是错的。
+     *
+     * <p>（实测过：同样的类型不匹配，**绑到对象上的查询参数**（如 {@code ?pageNum=abc}
+     * 配 {@code DeviceQuery}）会走 Bean Validation 那条路，本来就是 400；
+     * 只有散装的路径参数会漏到这里。）
+     *
+     * <p>消息里带上参数名和原始取值：**那是请求方自己发过来的东西**，
+     * 回显出来正好是他排查所需的，不涉及任何服务端信息。
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<Result<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        String message = "参数「" + ex.getName() + "」的取值「" + ex.getValue()
+                + "」不合法，应为" + describeType(ex.getRequiredType());
+
+        log.warn("请求参数类型不匹配: {}", message);
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(Result.failure(400, message));
+    }
+
+    /**
+     * 请求体读不出来：不是合法 JSON，或者干脆是空的。
+     *
+     * <p>⚠️ <b>刻意不回显 {@code ex.getMessage()}</b>：Jackson 的解析异常消息里
+     * 会带上出错的**原始片段**，严重时是整段请求体。请求体里可能有备注、
+     * 密码改写这类字段，原样回显等于把它写进了响应和日志。
+     * 这里只给一句固定的、可操作的提示，真正的原因记在服务端日志里。
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Result<Void>> handleUnreadableBody(HttpMessageNotReadableException ex) {
+        log.warn("请求体无法解析: {}", ex.getMostSpecificCause().getMessage());
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(Result.failure(400,
+                        "请求体格式不正确：请确认发的是合法 JSON，且请求头带了 "
+                                + "Content-Type: application/json"));
+    }
+
+    /** 把 Java 类型翻成人话 —— 别让调用方看到 {@code java.lang.Long} 这种东西 */
+    private static String describeType(Class<?> type) {
+        if (type == null) {
+            return "合法值";
+        }
+        if (Long.class.equals(type) || Integer.class.equals(type)
+                || long.class.equals(type) || int.class.equals(type)) {
+            return "数字";
+        }
+        if (LocalDate.class.equals(type)) {
+            return "日期（格式 yyyy-MM-dd）";
+        }
+        if (Boolean.class.equals(type) || boolean.class.equals(type)) {
+            return "布尔值";
+        }
+        return type.getSimpleName();
     }
 
     /**

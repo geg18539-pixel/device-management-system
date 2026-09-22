@@ -14,4 +14,14 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface SysOperLogRepository
         extends JpaRepository<SysOperLog, Long>, JpaSpecificationExecutor<SysOperLog> {
+
+    /**
+     * 某个标题的操作日志数。
+     *
+     * <p>后台首页的「今日越权被拒」用它 —— 拦截器把这类拒绝写成
+     * {@code title = "越权访问被拒绝"}（见 JwtInterceptor.recordDenied）。
+     * 按标题匹配而不是按状态匹配：状态为「失败」的操作日志还有很多别的原因
+     * （业务校验不通过、异常），混在一起数会严重虚高。
+     */
+    long countByTitleAndOperTimeAfter(String title, java.time.LocalDateTime since);
 }

@@ -95,9 +95,19 @@ public class SysUser {
     @Column(name = "phone", length = 20)
     private String phone;
 
-    /** 账号状态：正常 / 停用 */
+    /**
+     * 账号状态。
+     *
+     * <p>收成常量而不是散写字面量：**这三个值会出现在三个地方** ——
+     * 写入点（批量停用、种子数据）、读取点（登录校验、后台概览的"停用账号数"）、
+     * 界面上。任何一处写错都**不会报错**，只会表现为"筛选不出来"或"数量对不上"。
+     */
+    public static final String STATUS_ENABLED = "正常";
+    public static final String STATUS_DISABLED = "停用";
+
+    /** 账号状态：见 {@link #STATUS_ENABLED} / {@link #STATUS_DISABLED} */
     @Column(name = "status", nullable = false, length = 20)
-    private String status = "正常";
+    private String status = STATUS_ENABLED;
 
     /**
      * 所属部门 id，指向 sys_dept。null 表示未分配。

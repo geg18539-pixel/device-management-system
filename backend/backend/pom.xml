@@ -158,7 +158,25 @@
             <artifactId>spring-boot-starter-webmvc-test</artifactId>
             <scope>test</scope>
         </dependency>
-    </dependencies>
+    
+        <!--
+            H2：**只在测试里用**（test 作用域，不会进 jar，运行时镜像里也没有）。
+
+            加它是因为默认的 BackendApplicationTests 是 @SpringBootTest，
+            会启动完整上下文、包括数据源。没有 H2 的话它会去连
+            application.yml 里的 MySQL —— 本地没起 MySQL 就报连接失败，
+            CI 里更是必挂。配上 H2 之后这个测试才真的在检验东西
+            （实体映射对不对、Bean 装配得起来吗），而不是"连不上库所以跳过"。
+
+            生产用的还是 MySQL（mysql-connector-j 是 runtime 作用域）。
+            版本由 Boot 的 BOM 管，不用写。
+        -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+</dependencies>
 
     <build>
         <plugins>

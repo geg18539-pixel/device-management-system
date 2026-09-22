@@ -1,0 +1,91 @@
+# ============================================================
+# CI：每次 push / PR 都跑一遍，保证代码是**能构建、能启动**的
+#
+# 和 docker.yml 的分工：这个只管"检查"，不产任何东西；
+# 镜像的构建和推送在 docker.yml（只在合到 main / 打 tag 时才做）。
+#
+# 跑得快（几分钟），所以每次 push 都跑不心疼；镜像那边慢得多，
+# 只在需要发版时才做。
+# ============================================================
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# 只读就够了 —— 这个工作流不推任何东西。
+# 显式写出来而不是靠默认值：默认值会因为仓库设置变化而不同，
+# 写死了才能保证它永远没有多余的权限。
+permissions:
+  contents: read
+
+# 同一个分支上连着 push 时，取消上一次还没跑完的。
+# 省 Actions 额度，也省你等一个已经被新提交取代的结果。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: 后端（编译 + 测试）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 装 JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          # 和 backend/pom.xml 里声明的、以及 Dockerfile 里用的一致
+          java-version: '21'
+          cache: maven
+          # ⚠️ 必须指出 pom.xml 的真实位置。
+          # Maven 项目在 backend/backend 这一层（解压时多套了一层目录），
+          # 不写的话 setup-java 会去仓库根找 pom.xml，缓存静默失效
+          cache-dependency-path: backend/backend/pom.xml
+
+      # verify 比 test 多走一步 package，能顺带发现打包阶段的问题
+      # （比如 spring-boot-maven-plugin 配置错了）—— 那本来会在
+      # Docker 构建时才暴露
+      - name: mvn verify
+        working-directory: backend/backend
+        run: mvn -B verify
+
+  frontend:
+    name: 前端（类型检查 + 构建）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ⚠️ pnpm 必须在 setup-node 之前装：setup-node 的 cache: pnpm
+      # 要用 pnpm 命令去定位 store 目录，顺序反了会报
+      # "Unable to locate executable file: pnpm"
+      - name: 装 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          # package.json 里**没有 packageManager 字段**，corepack 判断不出
+          # 该用哪个版本，所以这里显式指定。
+          # （和 frontend/Dockerfile 里的 corepack prepare pnpm@10 保持一致。
+          #   以后在 package.json 里加上 packageManager 字段就可以删掉这行。）
+          version: 10
+
+      - name: 装 Node 22
+        uses: actions/setup-node@v4
+        with:
+          # 跟 frontend/Dockerfile 里的 node:22-alpine 对齐。
+          # 不要用 node:20 —— 它已经 EOL 了
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      # --frozen-lockfile：lock 和 package.json 不一致就直接失败。
+      # 这样"本地加了依赖但忘了提交 lock"会在 CI 里立刻暴露，
+      # 而不是等到 Docker 构建时才炸
+      - name: 装依赖
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      # 这一步实际跑的是 package.json 里的 "vue-tsc -b && vite build"
+      - name: 类型检查 + 构建
+        working-directory: frontend
+        run: pnpm build

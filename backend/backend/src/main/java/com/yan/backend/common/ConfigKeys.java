@@ -25,6 +25,23 @@ public final class ConfigKeys {
     public static final String COMPANY_NAME = "system.company";
     public static final String COMPANY_NAME_DEFAULT = "示例企业有限公司";
 
+    /**
+     * 系统**对外**的访问地址，例如 {@code http://192.168.1.20:8080} 或
+     * {@code https://dms.example.com}。
+     *
+     * <p><b>它只被一个地方用</b>：设备资产标签上那个二维码。二维码是印出来给
+     * **别的设备**（手机）扫的，所以里面必须是别的设备能访问到的地址。
+     *
+     * <p>⚠️ <b>空值表示"用当前页面地址"</b>。在开发机上（浏览器里是
+     * {@code localhost:5173}）那样扫出来是打不开的 —— 所以这个值在
+     * 真正要打印标签的场合**必须配**。界面上检测到是本机地址时会明确提示。
+     *
+     * <p>放进 {@link #PUBLIC_KEYS} 是因为它**按定义就是公开的**：
+     * 它要印在二维码上给任何人扫。
+     */
+    public static final String SYSTEM_BASE_URL = "system.base-url";
+    public static final String SYSTEM_BASE_URL_DEFAULT = "";
+
     // ---------- 安全策略 ----------
 
     /** 密码有效期（天）。<=0 表示关闭过期策略。对应 app.security.password-valid-days */
@@ -178,12 +195,39 @@ public final class ConfigKeys {
     public static final String AI_EMBEDDING_MODEL_DEFAULT = "";
 
     /**
-     * 允许匿名读取的参数白名单。
+     * 允许匿名读取的参数：**键 → 读不到时的兜底值**。
      *
      * <p>登录页要用系统名称和企业名称，而那时用户还没登录、拿不到 token。
-     * 所以这几个键单独开一个免登录接口。**只放展示类的键**，
+     * 所以这几项单独开一个免登录接口。**只放展示类的键**，
      * 安全策略、阈值、AI 配置这类一律不放 —— 它们会暴露系统的内部配置。
+     *
+     * <p>{@link #SYSTEM_BASE_URL} 也算展示类，而且**按定义就是公开的**：
+     * 它要印在资产标签的二维码上给任何人扫。
+     *
+     * <h3>⚠️ 为什么是 Map 而不是两个平行的常量</h3>
+     *
+     * <p>原来是「一个 {@code PUBLIC_KEYS} 列表 + 接口里逐个 {@code put}」。
+     * 那种写法看着有白名单，实际上**接口根本没用它** ——
+     * 往列表里加一项、忘了在接口里补一行，白名单就成了摆设，
+     * 而且**什么都不报**。（真发生过：加 {@code system.base-url} 时就是这样，
+     * 接口照旧只返回原来那两项；更麻烦的是 {@code WebMvcConfig} 里
+     * "这个接口可以免登录"那段安全论证**引用的正是这个列表**。）
+     *
+     * <p>收成一个 Map 之后，"有哪些键"和"兜底值是什么"在同一处，
+     * 接口直接遍历它 —— 结构上不可能再脱节。
+     * 顺序用 {@link java.util.LinkedHashMap} 包一层是为了返回值稳定（便于比对）。
      */
-    public static final java.util.List<String> PUBLIC_KEYS = java.util.List.of(
-            SYSTEM_NAME, COMPANY_NAME);
+    public static final java.util.Map<String, String> PUBLIC_DEFAULTS = buildPublicDefaults();
+
+    /** 允许匿名读取的键名。由 {@link #PUBLIC_DEFAULTS} 派生，不再单独维护 */
+    public static final java.util.List<String> PUBLIC_KEYS =
+            java.util.List.copyOf(PUBLIC_DEFAULTS.keySet());
+
+    private static java.util.Map<String, String> buildPublicDefaults() {
+        java.util.Map<String, String> map = new java.util.LinkedHashMap<>();
+        map.put(SYSTEM_NAME, SYSTEM_NAME_DEFAULT);
+        map.put(COMPANY_NAME, COMPANY_NAME_DEFAULT);
+        map.put(SYSTEM_BASE_URL, SYSTEM_BASE_URL_DEFAULT);
+        return java.util.Collections.unmodifiableMap(map);
+    }
 }

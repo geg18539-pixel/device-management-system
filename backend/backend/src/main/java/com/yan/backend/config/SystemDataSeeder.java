@@ -1224,6 +1224,14 @@ public class SystemDataSeeder {
                 "企业名称", "系统信息", SysConfig.TYPE_STRING, 2,
                 "显示在登录页上");
 
+        created += ensureConfig(ConfigKeys.SYSTEM_BASE_URL,
+                ConfigKeys.SYSTEM_BASE_URL_DEFAULT,
+                "对外访问地址", "系统信息", SysConfig.TYPE_STRING, 3,
+                "填这台服务器在局域网/公网上的地址，例如 http://192.168.1.20:8080。"
+                        + "设备资产标签上的二维码用的就是它 —— 二维码是给别的设备（手机）扫的，"
+                        + "所以必须填别的设备能访问到的地址。留空表示用当前页面的地址，"
+                        + "那样在开发机上扫出来是打不开的");
+
         created += ensureConfig(ConfigKeys.PASSWORD_VALID_DAYS,
                 String.valueOf(ConfigKeys.PASSWORD_VALID_DAYS_DEFAULT),
                 "密码有效期（天）", "安全策略", SysConfig.TYPE_NUMBER, 1,
@@ -1319,7 +1327,7 @@ public class SystemDataSeeder {
                 ConfigKeys.AI_CHAT_MODEL_DEFAULT,
                 "对话模型", group, SysConfig.TYPE_STRING, 3,
                 "AI 助手、故障分析、故障诊断都用这个模型。"
-                        + "本机 Ollama 例如 qwen2.5:3b；DeepSeek 用 deepseek-chat");
+                        + "本机 Ollama 例如 qwen3.5:4b；DeepSeek 用 deepseek-chat");
 
         created += ensureConfig(ConfigKeys.AI_CHAT_TEMPERATURE,
                 ConfigKeys.AI_CHAT_TEMPERATURE_DEFAULT,

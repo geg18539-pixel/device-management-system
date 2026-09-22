@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { getPublicConfig } from '../api/config'
+import { joinUrl, resolveBaseUrl } from '../utils/baseUrl'
 
 /** 兜底名称。后端读不到时用它，保证界面上永远不会是空白标题 */
 const FALLBACK_SYSTEM_NAME = '设备管理系统'
@@ -46,9 +47,30 @@ export const NARROW_QUERY = '(max-width: 900px)'
 export const useAppStore = defineStore('app', () => {
   const systemName = ref(FALLBACK_SYSTEM_NAME)
   const companyName = ref('')
+  /** 管理员在「系统设置 → 系统信息」里填的对外访问地址。空串表示没配 */
+  const baseUrl = ref('')
   const loaded = ref(false)
 
   const pageTitleSuffix = computed(() => systemName.value || FALLBACK_SYSTEM_NAME)
+
+  /**
+   * 系统**对外**的访问地址，用来拼二维码里的链接。
+   *
+   * <p>⚠️ 为什么不能直接用 `window.location.origin`：二维码是印出来给
+   * **别的设备（手机）**扫的。在开发机上浏览器里是 `localhost:5173`，
+   * 内网用 IP 打开是 `192.168.x.x`，两者对手机来说都不是"同一个地址" ——
+   * 前者扫了必然打不开。
+   *
+   * <p>所以优先用管理员配的地址（那才是他自己确认过、别的设备能访问的），
+   * 没配的时候才退回当前页面地址。**用当前地址时会打不通**，
+   * 界面上检测到是本机地址会明确提示（见 DeviceDetailView 的资产标签）。
+   */
+  const publicBaseUrl = computed(() => resolveBaseUrl(baseUrl.value, window.location.origin))
+
+  /** 拼好的那台设备档案页地址（印在资产标签的二维码里） */
+  function deviceUrl(deviceId: number | string): string {
+    return joinUrl(publicBaseUrl.value, `devices/${deviceId}`)
+  }
 
   // ============================================================
   // 主题
@@ -132,6 +154,7 @@ export const useAppStore = defineStore('app', () => {
       const config = await getPublicConfig()
       systemName.value = config?.['system.name'] || FALLBACK_SYSTEM_NAME
       companyName.value = config?.['system.company'] || ''
+      baseUrl.value = config?.['system.base-url'] || ''
       loaded.value = true
     } catch {
       // 拿不到就用默认名称 —— 一个标题不该让页面出不来
@@ -141,6 +164,9 @@ export const useAppStore = defineStore('app', () => {
   return {
     systemName,
     companyName,
+    baseUrl,
+    publicBaseUrl,
+    deviceUrl,
     loaded,
     pageTitleSuffix,
     loadPublicConfig,

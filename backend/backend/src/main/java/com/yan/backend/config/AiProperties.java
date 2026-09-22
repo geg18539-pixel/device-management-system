@@ -49,7 +49,7 @@ public class AiProperties {
         /** ollama / openai */
         private String provider = "ollama";
         private String baseUrl = "http://localhost:11434";
-        private String model = "qwen2.5:3b";
+        private String model = "qwen3.5:4b";
 
         /**
          * API Key。**只从环境变量或 yml 读**。
@@ -114,7 +114,7 @@ public class AiProperties {
         /**
          * 等模型生成的总时间（分钟）。
          *
-         * <p>3B 模型在 CPU 上生成 500 字左右可能要几十秒到一两分钟，
+         * <p>本机小模型生成 500 字左右可能要几十秒到一两分钟，
          * 给得太短会在生成到一半时被掐断，表现为回复不完整。
          */
         private int readTimeoutMinutes = 5;

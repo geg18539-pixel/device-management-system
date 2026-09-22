@@ -27,9 +27,12 @@ import PageHeader from '../components/PageHeader.vue'
 import StatusPlate from '../components/StatusPlate.vue'
 import QrcodeVue from 'qrcode.vue'
 import { usePerm } from '../composables/usePerm'
+import { useAppStore } from '../stores/app'
+import { isLoopbackUrl } from '../utils/baseUrl'
 import type { PlateTone } from '../utils/plateTone'
 
 const { hasPerm } = usePerm()
+const appStore = useAppStore()
 
 const route = useRoute()
 const router = useRouter()
@@ -50,11 +53,22 @@ const labelVisible = ref(false)
  * 再手工输入编号。而资产编号另外用大字印在码的下方 —— 两者的用途不同：
  * 码是给"手上正好有手机"的场合，编号是给人读、给没网/没装系统时兜底的。
  *
- * <p>⚠️ 用 {@code window.location.origin} 而不是配一个固定地址：
- * 看这个页面的人正好就在他能访问的那个地址上，打印出来的标签天然可用。
- * 配固定地址的话，本机开发时打印的标签拿到内网就是一张废纸。
+ * <p>⚠️ <b>地址优先取管理员配的「对外访问地址」，而不是当前页面地址。</b>
+ * 这一点第一版做反了：当时想的是"看这个页面的人正好在他能访问的地址上"，
+ * 所以直接用 {@code window.location.origin}。但二维码是给**别的设备**扫的 ——
+ * 在开发机上浏览器里是 {@code localhost:5173}，手机扫了必然打不开。
+ * 真实可用的地址只有管理员知道，所以它是个系统参数。
+ * 具体拼法见 {@code stores/app.ts} 的 {@code deviceUrl}。
  */
-const labelUrl = computed(() => `${window.location.origin}/devices/${deviceId}`)
+const labelUrl = computed(() => appStore.deviceUrl(deviceId))
+
+/**
+ * 二维码里的地址是不是"本机地址"。
+ *
+ * <p>是的话，**这台机器之外的任何设备都扫不开** —— 而这只有扫的人才会发现。
+ * 与其让人印一堆标签贴上去才发现扫不动，不如在弹窗里直接说清楚怎么改。
+ */
+const labelUrlIsLocal = computed(() => isLoopbackUrl(labelUrl.value))
 
 async function copyLabelUrl() {
   try {
@@ -646,6 +660,24 @@ function formatSize(bytes?: number): string {
         <div class="label-foot">扫码打开设备档案</div>
       </div>
 
+      <!-- ⚠️ 本机地址必须提示出来。二维码是印给**别的设备**扫的，
+           localhost / 127.0.0.1 只有这台电脑自己能访问 ——
+           不提示的话用户会印一堆标签贴到设备上，才发现一台都扫不动 -->
+      <el-alert
+        v-if="labelUrlIsLocal"
+        type="warning"
+        :closable="false"
+        show-icon
+        class="label-warn"
+        title="这个地址别的设备扫不开"
+      >
+        <div class="label-warn-body">
+          二维码里是本机地址，只有这台电脑自己能访问。
+          要打印标签的话，请到「系统设置 → 系统信息」把「对外访问地址」
+          填成这台机器在局域网里的地址（例如 http://192.168.1.20:8080）或域名。
+        </div>
+      </el-alert>
+
       <!-- user-select: all 让链接点一下就整段选中，配合下面的复制按钮 ——
            内网 HTTP 环境下 clipboard API 不可用时，这是唯一的退路 -->
       <div class="label-url-row">
@@ -825,6 +857,17 @@ function formatSize(bytes?: number): string {
 .label-foot {
   font-size: 11px;
   color: var(--label-ink-3);
+}
+
+/* 本机地址警告。放在链接上方：先看到"扫不开"，再看那个链接 */
+.label-warn {
+  margin-top: var(--sp-3);
+}
+
+.label-warn-body {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.7;
 }
 
 .label-url-row {

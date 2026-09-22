@@ -97,9 +97,16 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/system',
-    // 侧边栏里"系统管理"是个目录，没有自己的页面。
-    // 加这条重定向，直接输 /system 也能落到第一个子页而不是 404
-    redirect: '/system/users',
+    // 进后台的落地页。落到「系统概览」而不是「用户管理」——
+    // 管理员进来第一眼该看到"系统现在什么状况"，而不是直接开始改数据。
+    // 从工作台切过来时走的也是这条（见 App.vue 的 switchArea）
+    redirect: '/system/home',
+  },
+  {
+    path: '/system/home',
+    name: 'ConsoleHome',
+    component: () => import('../views/ConsoleHomeView.vue'),
+    meta: { title: '系统概览', roles: ['admin'] },
   },
   {
     path: '/system/users',
@@ -160,8 +167,13 @@ const routes: RouteRecordRaw[] = [
   },
   {
     // 设备知识库（RAG 的源文件管理）。限 admin，理由同上：
-    // 往里传的是全局资料，和系统设置是一个性质
-    path: '/knowledge',
+    // 往里传的是全局资料，和系统设置是一个性质。
+    //
+    // ⚠️ 路径从 /knowledge 挪到了 /system/knowledge：它属于**管理后台**，
+    // 而"哪个区域"的判据就是路径前缀 `/system`（见 config/menu.ts 的
+    // areaOfRoute）。留在外面的话，这一页会套上员工前台的外壳，
+    // 侧栏里却找不到它 —— 因为后台菜单是按 /system 前缀收的
+    path: '/system/knowledge',
     name: 'Knowledge',
     component: () => import('../views/KnowledgeView.vue'),
     meta: { title: '设备知识库', roles: ['admin'] },

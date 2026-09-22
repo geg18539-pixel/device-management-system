@@ -18,8 +18,12 @@ services:
     image: mysql:8.0
     container_name: dms-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: device_db
+      # ${VAR:-默认值} 是 Compose 自己的变量插值语法：
+      # 环境里有就用环境里的，没有就用 root。
+      # 本地开发不用管它；真要放到别处跑时，在 .env 或 shell 里设一个就行，
+      # 不用改这个文件（也就不会把密码提交进仓库）。
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-device_db}
     ports:
       - "3306:3306"
     volumes:
@@ -59,6 +63,13 @@ services:
   # 后端
   # ----------------------------------------------------------
   backend:
+    # ★ image 和 build 同时写，两种用法都能走：
+    #     docker compose pull   → 拉 CI 构建好推到 GHCR 的那个镜像
+    #     docker compose up -d  → 本地已经有这个镜像就直接用（不会重新构建）
+    #     docker compose up -d --build → 强制本地重新构建（改代码时用）
+    #   如果只写 build 不写 image，拉不到别人构建好的镜像；
+    #   只写 image 不写 build，本地就没法构建了。
+    image: ghcr.io/geg18539-pixel/device-management-system/backend:latest
     build:
       # 注意路径是 backend/backend —— Maven 项目根（有 pom.xml 的那层）
       # 在 backend/ 的子目录里，这是解压时多套了一层导致的。
@@ -77,7 +88,8 @@ services:
       DB_PORT: "3306"
       DB_NAME: device_db
       DB_USER: root
-      DB_PASSWORD: root
+      # 跟着上面 mysql 那个走，改一处就行
+      DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       # Ollama 跑在 Windows 宿主机上，不在 Compose 网络里。
@@ -90,8 +102,19 @@ services:
       # 用旧名字不会报错，只会**静默地用回默认值 localhost:11434** ——
       # 而容器里的 localhost 连不上宿主机，表现是"AI 功能全部连不上，
       # 但环境变量明明写了"。
+      # 部署到别处时**应该换掉 JWT 密钥**（application.yml 里那个只适合本地开发）。
+      # 写法跟上面 AI 密钥一样，在这里或 docker-compose.override.yml 里加一行：
+      #   JWT_SECRET: 你的 32 字节以上的随机串
+      #
+      # ⚠️ 不要写成 JWT_SECRET: ${JWT_SECRET:-} ——
+      # 空串会**盖掉** application.yml 里的默认值，而 JwtUtil 要求至少 32 字节，
+      # 启动会直接失败。（这个项目已经因为"空串盖掉默认值"栽过好几次了。）
+      #
+      # 也不要在这里把 application.yml 里那个默认密钥抄第二份 ——
+      # 抄两份就要记得改两处，而漏改一处不会报错。
+
       AI_CHAT_BASE_URL: http://host.docker.internal:11434
-      AI_CHAT_MODEL: qwen2.5:3b
+      AI_CHAT_MODEL: qwen3.5:4b
       # 嵌入模型走同一个地址。**这个模型不在 Ollama 默认安装里**，
       # 需要先在宿主机上执行：ollama pull nomic-embed-text
       AI_EMBED_BASE_URL: http://host.docker.internal:11434
@@ -122,6 +145,8 @@ services:
   # 前端
   # ----------------------------------------------------------
   frontend:
+    # 同 backend：image + build 并存，拉取和本地构建都能走
+    image: ghcr.io/geg18539-pixel/device-management-system/frontend:latest
     build:
       context: ./frontend
       dockerfile: Dockerfile

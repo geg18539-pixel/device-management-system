@@ -44,7 +44,7 @@ public class SysUserServiceImpl implements SysUserService {
 
     /** 账号状态取值 */
     private static final String STATUS_NORMAL = "正常";
-    private static final String STATUS_DISABLED = "停用";
+    private static final String STATUS_DISABLED = SysUser.STATUS_DISABLED;
 
     /** 单次导出最多多少条，防止把整个工作簿建进内存时撑爆堆 */
     private static final int EXPORT_LIMIT = 10_000;
