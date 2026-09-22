@@ -4,9 +4,7 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-importers:
-
-  .:
+importers:  :
     dependencies:
       axios:
         specifier: ^1.20.0
