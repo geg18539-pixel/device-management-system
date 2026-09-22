@@ -96,7 +96,7 @@
 |---|---|---|
 | 系统概览 | `docs/screenshots/05-console-home.png` | 「需要关注」四项异常指标放最前面，规模数字放后面 |
 | 角色授权 | `docs/screenshots/06-role-perms.png` | 权限树里同时显示 目录 / 菜单 / **按钮** 三层，带权限标识 |
-| 资产审计中心 | `docs/screenshots/07-audit.png` | 展开行看字段级新旧值 |
+| 设备知识库 | `docs/screenshots/07-audit.png` | 展开行看字段级新旧值 |
 | 暗色主题 | `docs/screenshots/08-dark.png` | 同一页在暗色下的表现（项目从一开始就把亮暗两套 token 一起设计了） |
 
 ## 三、技术栈
